@@ -1,11 +1,13 @@
 import { useRef, useState } from 'react'
-import type { ReactNode } from 'react'
+import { Pick, Seg, mins, timeOptions, toMinutes, withCurrent } from '../components/Fields'
 import { toast } from '../components/Toast'
 import { replan } from '../lib/actions'
+import { uid } from '../lib/id'
+import { DEFAULT_SETTINGS } from '../lib/scheduler'
 import { disablePush, enablePush, pushState, testPush } from '../lib/push'
 import type { PushState } from '../lib/push'
 import { useStore } from '../lib/store'
-import type { AppData, Settings as S } from '../types'
+import type { AppData, Break, Look, Settings as S } from '../types'
 
 const DAYS = [
   [1, 'M'], [2, 'T'], [3, 'W'], [4, 'T'], [5, 'F'], [6, 'S'], [0, 'S'],
@@ -19,54 +21,65 @@ const PUSH_COPY: Record<PushState, string> = {
   on: 'On. You will be nudged before each block, and when a timed hour is up.',
 }
 
-const toMinutes = (t: string) => {
-  const [h, m] = t.split(':').map(Number)
-  return h * 60 + m
-}
-const label = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
-
-/** Times from `from` to `to` (minutes) in steps, always including the saved value. */
-function times(from: number, to: number, step: number, current: string): string[] {
-  const out: number[] = []
-  for (let m = Math.ceil(from / step) * step; m <= to; m += step) out.push(m)
-  const cur = toMinutes(current)
-  if (!out.includes(cur)) out.push(cur)
-  return out.sort((a, b) => a - b).map(label)
-}
-
-const withCurrent = (opts: number[], current: number) => (opts.includes(current) ? opts : [...opts, current].sort((a, b) => a - b))
-
-function Pick({ name, value, onChange, children }: { name: string; value: string | number; onChange: (v: string) => void; children: ReactNode }) {
-  return (
-    <label className="lab">
-      {name}
-      <select className="field" value={value} onChange={(e) => onChange(e.target.value)}>
-        {children}
-      </select>
-    </label>
-  )
-}
-
 const BLOCK_MINUTES = [30, 45, 60, 90, 120]
-const LUNCH_MINUTES = [0, 30, 45, 60, 90]
+const BREAK_MINUTES = [15, 30, 45, 60, 90, 120]
 const LEAD_MINUTES = [0, 5, 10, 15, 30]
-const mins = (m: number) => (m === 0 ? 'None' : m === 60 ? '1 hour' : m === 90 ? '1½ hours' : m === 120 ? '2 hours' : `${m} minutes`)
+
+const PALETTES: { id: Look['palette']; name: string; color: string }[] = [
+  { id: 'blush', name: 'Blush', color: '#f9eeea' },
+  { id: 'linen', name: 'Linen', color: '#f6f1e8' },
+  { id: 'sage', name: 'Sage', color: '#eef2ed' },
+  { id: 'lilac', name: 'Lilac', color: '#f1edf6' },
+]
 
 function DayLine({ s }: { s: S }) {
   const a = toMinutes(s.dayStart)
   const b = toMinutes(s.dayEnd)
-  const lunch = s.lunchMinutes > 0 ? toMinutes(s.lunchStart) : null
-  const pct = (m: number) => ((m - 300) / (23 * 60 - 300)) * 100
-  const open = Math.max(0, b - a - s.lunchMinutes)
+  const min = 300
+  const max = 23 * 60 + 30
+  const pct = (m: number) => ((Math.min(max, Math.max(min, m)) - min) / (max - min)) * 100
+  const overlap = (br: Break) => {
+    const from = toMinutes(br.start)
+    return Math.max(0, Math.min(b, from + br.minutes) - Math.max(a, from))
+  }
+  const open = Math.max(0, b - a - s.breaks.reduce((n, br) => n + overlap(br), 0))
   const blocks = Math.floor(open / s.blockMinutes)
   return (
     <div className="dayline">
       <div className="track" aria-hidden="true">
         <div className="work" style={{ left: `${pct(a)}%`, width: `${pct(b) - pct(a)}%` }} />
-        {lunch !== null && <div className="rest" style={{ left: `${pct(lunch)}%`, width: `${(s.lunchMinutes / (23 * 60 - 300)) * 100}%` }} />}
+        {s.breaks.map((br) => (
+          <div key={br.id} className="rest" style={{ left: `${pct(toMinutes(br.start))}%`, width: `${pct(toMinutes(br.start) + br.minutes) - pct(toMinutes(br.start))}%` }} />
+        ))}
       </div>
       <div className="faint small">
-        {s.dayStart}–{s.dayEnd}, with {s.lunchMinutes > 0 ? `${mins(s.lunchMinutes)} for lunch` : 'no lunch break'}. Room for {blocks} {blocks === 1 ? 'block' : 'blocks'} of {s.blockMinutes} min a day.
+        {s.dayStart}–{s.dayEnd}. Room for {blocks} {blocks === 1 ? 'block' : 'blocks'} of {s.blockMinutes} min a day around your breaks.
+      </div>
+    </div>
+  )
+}
+
+function BreaksEditor({ s, set }: { s: S; set: (patch: Partial<S>, replanAfter?: boolean) => void }) {
+  const change = (id: string, patch: Partial<Break>, replanAfter = true) =>
+    set({ breaks: s.breaks.map((b) => (b.id === id ? { ...b, ...patch } : b)) }, replanAfter)
+  return (
+    <div className="stack" style={{ gap: 10 }}>
+      <div className="small soft">Daily breaks. Work is never planned over these.</div>
+      {s.breaks.length === 0 && <div className="faint small">No breaks yet.</div>}
+      {s.breaks.map((b) => (
+        <div key={b.id} className="break-row">
+          <input className="field" aria-label="Break name" value={b.name} onChange={(e) => change(b.id, { name: e.target.value }, false)} />
+          <select className="field" aria-label={`${b.name} starts`} value={b.start} onChange={(e) => change(b.id, { start: e.target.value })}>
+            {timeOptions(5 * 60, 23 * 60 + 30, 15, b.start).map((t) => <option key={t}>{t}</option>)}
+          </select>
+          <select className="field" aria-label={`${b.name} length`} value={b.minutes} onChange={(e) => change(b.id, { minutes: Number(e.target.value) })}>
+            {withCurrent(BREAK_MINUTES, b.minutes).map((m) => <option key={m} value={m}>{mins(m)}</option>)}
+          </select>
+          <button className="icon-btn" aria-label={`Remove ${b.name}`} onClick={() => set({ breaks: s.breaks.filter((x) => x.id !== b.id) }, true)}>×</button>
+        </div>
+      ))}
+      <div>
+        <button className="btn quiet small" onClick={() => set({ breaks: [...s.breaks, { id: uid(), name: 'Break', start: '15:30', minutes: 30 }] }, true)}>Add a break</button>
       </div>
     </div>
   )
@@ -84,6 +97,9 @@ export function Settings() {
       const next = { ...d, settings: { ...d.settings, ...patch } }
       return replanAfter ? replan(next) : next
     })
+
+  const setLook = (patch: Partial<Look>) =>
+    update((d) => ({ ...d, settings: { ...d.settings, look: { ...d.settings.look, ...patch } } }))
 
   const toggleDay = (n: number) => {
     const days = s.workDays.includes(n) ? s.workDays.filter((x) => x !== n) : [...s.workDays, n]
@@ -148,20 +164,14 @@ export function Settings() {
 
             <div className="lab-row">
               <Pick name="Day starts" value={s.dayStart} onChange={(v) => set({ dayStart: v }, true)}>
-                {times(5 * 60, toMinutes(s.dayEnd) - s.blockMinutes, 30, s.dayStart).map((t) => <option key={t}>{t}</option>)}
+                {timeOptions(5 * 60, toMinutes(s.dayEnd) - s.blockMinutes, 30, s.dayStart).map((t) => <option key={t}>{t}</option>)}
               </Pick>
               <Pick name="Day ends" value={s.dayEnd} onChange={(v) => set({ dayEnd: v }, true)}>
-                {times(toMinutes(s.dayStart) + s.blockMinutes, 23 * 60 + 30, 30, s.dayEnd).map((t) => <option key={t}>{t}</option>)}
+                {timeOptions(toMinutes(s.dayStart) + s.blockMinutes, 23 * 60 + 30, 30, s.dayEnd).map((t) => <option key={t}>{t}</option>)}
               </Pick>
-              <Pick name="Lunch" value={s.lunchMinutes} onChange={(v) => set({ lunchMinutes: Number(v) }, true)}>
-                {withCurrent(LUNCH_MINUTES, s.lunchMinutes).map((m) => <option key={m} value={m}>{m === 0 ? 'No lunch break' : mins(m)}</option>)}
-              </Pick>
-              {s.lunchMinutes > 0 && (
-                <Pick name="Lunch starts" value={s.lunchStart} onChange={(v) => set({ lunchStart: v }, true)}>
-                  {times(toMinutes(s.dayStart), toMinutes(s.dayEnd) - s.lunchMinutes, 15, s.lunchStart).map((t) => <option key={t}>{t}</option>)}
-                </Pick>
-              )}
             </div>
+
+            <BreaksEditor s={s} set={set} />
 
             <DayLine s={s} />
 
@@ -174,6 +184,47 @@ export function Settings() {
               </Pick>
             </div>
             <div className="faint small">New tasks use these. Blocks already on your calendar keep their length.</div>
+          </div>
+        </section>
+
+        <section className="card">
+          <h2 style={{ marginBottom: 6 }}>Look & layout</h2>
+          <p className="soft small" style={{ marginTop: 0 }}>Try things out. Nothing here touches your data, and it all changes instantly.</p>
+          <div className="stack" style={{ gap: 22 }}>
+            <div>
+              <div className="small soft" style={{ marginBottom: 8 }}>Colours</div>
+              <div className="swatches" role="radiogroup" aria-label="Colours">
+                {PALETTES.map((p) => (
+                  <button key={p.id} role="radio" aria-checked={s.look.palette === p.id} className={`swatch ${s.look.palette === p.id ? 'on' : ''}`} onClick={() => setLook({ palette: p.id })}>
+                    <i style={{ background: p.color }} />
+                    {p.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <div className="small soft" style={{ marginBottom: 8 }}>Menu</div>
+              <Seg label="Menu" value={s.look.nav} options={[['auto', 'Fits the screen'], ['rail', 'Side menu'], ['bar', 'Bottom bar']]} onChange={(nav) => setLook({ nav })} />
+            </div>
+            <div>
+              <div className="small soft" style={{ marginBottom: 8 }}>Spacing</div>
+              <Seg label="Spacing" value={s.look.density} options={[['compact', 'Compact'], ['cozy', 'Cosy'], ['airy', 'Airy']]} onChange={(density) => setLook({ density })} />
+            </div>
+            <div>
+              <div className="small soft" style={{ marginBottom: 8 }}>Today page</div>
+              <Seg label="Today layout" value={s.look.today} options={[['focus', 'One column'], ['split', 'Two columns']]} onChange={(today) => setLook({ today })} />
+            </div>
+            <div>
+              <div className="small soft" style={{ marginBottom: 8 }}>Calendar</div>
+              <Seg label="Calendar layout" value={s.look.week} options={[['grid', 'Week grid'], ['agenda', 'List'], ['day', 'One day']]} onChange={(week) => setLook({ week })} />
+            </div>
+            <div>
+              <div className="small soft" style={{ marginBottom: 8 }}>Board</div>
+              <Seg label="Board layout" value={s.look.board} options={[['columns', 'Columns'], ['stacked', 'Stacked']]} onChange={(board) => setLook({ board })} />
+            </div>
+            <div>
+              <button className="btn ghost small" onClick={() => setLook({ ...DEFAULT_SETTINGS.look })}>Reset to the original look</button>
+            </div>
           </div>
         </section>
 

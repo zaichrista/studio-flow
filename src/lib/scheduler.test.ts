@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import type { Task } from '../types'
+import type { CalEvent, Task } from '../types'
 import {
   DEFAULT_SETTINGS as S,
   defaultDue,
+  eventsOn,
   makeBlocks,
   placePending,
   rollOver,
   splitBlock,
+  unplaceConflicts,
   workDates,
 } from './scheduler'
 
@@ -120,5 +122,95 @@ describe('partial blocks', () => {
     expect(rolled[0]).toMatchObject({ date: '', minutes: 60 })
     const again = placePending([t], rolled, S, new Date(2026, 9, 19, 15, 0))
     expect(again[0]).toMatchObject({ date: '2026-10-19', start: '15:00' })
+  })
+})
+
+const shift = (over: Partial<CalEvent> = {}): CalEvent => ({
+  id: 'e1',
+  title: 'Café shift',
+  kind: 'shift',
+  date: '2026-10-19',
+  start: '09:00',
+  end: '15:00',
+  repeatDays: [],
+  until: '',
+  ...over,
+})
+
+const overlaps = (a: { start: string; minutes: number }, from: string, to: string) => {
+  const [h, m] = a.start.split(':').map(Number)
+  const s0 = h * 60 + m
+  const [fh, fm] = from.split(':').map(Number)
+  const [th, tm] = to.split(':').map(Number)
+  return s0 < th * 60 + tm && s0 + a.minutes > fh * 60 + fm
+}
+
+describe('breaks', () => {
+  it('keeps dinner free when the working day runs late', () => {
+    const late = { ...S, dayEnd: '21:00' }
+    const t = task({ estimateMinutes: 60 * 12, dueDate: '2026-10-19' })
+    const placed = placePending([t], makeBlocks(t, late), late, monday8)
+    const today = placed.filter((b) => b.date === '2026-10-19')
+    expect(today.length).toBeGreaterThan(8)
+    expect(today.some((b) => overlaps(b, '18:30', '19:30'))).toBe(false)
+    expect(today.some((b) => overlaps(b, '13:00', '14:00'))).toBe(false)
+  })
+
+  it('honours any number of custom breaks', () => {
+    const s = { ...S, breaks: [{ id: 'w', name: 'Walk', start: '10:00', minutes: 30 }] }
+    const t = task({ estimateMinutes: 60 * 3, dueDate: '2026-10-19' })
+    const placed = placePending([t], makeBlocks(t, s), s, monday8)
+    expect(placed.some((b) => b.date === '2026-10-19' && overlaps(b, '10:00', '10:30'))).toBe(false)
+  })
+})
+
+describe('fixed events', () => {
+  it('plans work around a shift', () => {
+    const t = task({ estimateMinutes: 60 * 3, dueDate: '2026-10-19' })
+    const placed = placePending([t], makeBlocks(t, S), S, monday8, [shift()])
+    const mon = placed.filter((b) => b.date === '2026-10-19')
+    expect(mon.length).toBeGreaterThan(0)
+    expect(mon.some((b) => overlaps(b, '09:00', '15:00'))).toBe(false)
+  })
+
+  it('repeats weekly on chosen days only, until an end date', () => {
+    const e = shift({ repeatDays: [2, 4], until: '2026-10-29' })
+    expect(eventsOn([e], '2026-10-20')).toHaveLength(1) // Tue
+    expect(eventsOn([e], '2026-10-22')).toHaveLength(1) // Thu
+    expect(eventsOn([e], '2026-10-21')).toHaveLength(0) // Wed
+    expect(eventsOn([e], '2026-10-13')).toHaveLength(0) // before it starts
+    expect(eventsOn([e], '2026-11-03')).toHaveLength(0) // after it ends
+  })
+
+  it('a one-off shows only on its own day', () => {
+    expect(eventsOn([shift()], '2026-10-19')).toHaveLength(1)
+    expect(eventsOn([shift()], '2026-10-26')).toHaveLength(0)
+  })
+
+  it('shifts on rest days are still respected if work is spilled there', () => {
+    const sat = shift({ date: '2026-10-24', start: '09:00', end: '17:00' })
+    expect(eventsOn([sat], '2026-10-24')).toHaveLength(1)
+  })
+
+  it('moves blocks that a new event lands on, and re-places them', () => {
+    const t = task({ estimateMinutes: 60, dueDate: '2026-10-21' })
+    const placed = placePending([t], makeBlocks(t, S), S, monday8)
+    expect(placed[0]).toMatchObject({ date: '2026-10-19', start: '09:00' })
+    const events = [shift()]
+    const cleared = unplaceConflicts(placed, S, events)
+    expect(cleared[0].date).toBe('')
+    const again = placePending([t], cleared, S, monday8, events)
+    expect(again[0].date === '2026-10-19' ? again[0].start >= '15:00' : true).toBe(true)
+  })
+
+  it('never evicts the block being timed or one with logged time', () => {
+    const t = task({ estimateMinutes: 60 })
+    const [b] = placePending([t], makeBlocks(t, S), S, monday8)
+    expect(unplaceConflicts([b], S, [shift()], b.id)[0].date).toBe('2026-10-19')
+    expect(unplaceConflicts([{ ...b, loggedSeconds: 600 }], S, [shift()])[0].date).toBe('2026-10-19')
+  })
+
+  it('ignores a zero or negative length event', () => {
+    expect(eventsOn([shift({ start: '10:00', end: '10:00' })], '2026-10-19')).toHaveLength(0)
   })
 })

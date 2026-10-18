@@ -5,6 +5,7 @@ import type { Status } from '../lib/actions'
 import { iso, smallDate } from '../lib/dates'
 import { taskSeconds } from '../lib/stats'
 import { fmtDuration } from '../lib/dates'
+import { Seg } from '../components/Fields'
 import { useStore } from '../lib/store'
 import type { Task } from '../types'
 
@@ -117,7 +118,8 @@ function Column({ col, tasks, projectId }: { col: (typeof COLUMNS)[number]; task
 }
 
 export function Board() {
-  const { data } = useStore()
+  const { data, update } = useStore()
+  const layout = data.settings.look.board
   const [filter, setFilter] = useState<string>('all')
   const projectId = filter === 'all' || filter === 'personal' ? null : filter
   const shown = data.tasks.filter((t) =>
@@ -138,15 +140,23 @@ export function Board() {
         </div>
       </div>
 
-      <div className="seg" style={{ marginBottom: 24, flexWrap: 'wrap', borderRadius: 24 }}>
+      <div className="row" style={{ justifyContent: 'space-between', flexWrap: 'wrap', marginBottom: 24, gap: 16 }}>
+      <div className="seg" style={{ flexWrap: 'wrap', borderRadius: 24 }}>
         <button className={filter === 'all' ? 'on' : ''} onClick={() => setFilter('all')}>Everything</button>
         {data.projects.map((p) => (
           <button key={p.id} className={filter === p.id ? 'on' : ''} onClick={() => setFilter(p.id)}>{p.name}</button>
         ))}
         <button className={filter === 'personal' ? 'on' : ''} onClick={() => setFilter('personal')}>Personal</button>
       </div>
+      <Seg
+        label="Board layout"
+        value={layout}
+        options={[['columns', 'Columns'], ['stacked', 'Stacked']]}
+        onChange={(board) => update((d) => ({ ...d, settings: { ...d.settings, look: { ...d.settings.look, board } } }))}
+      />
+      </div>
 
-      <div className="kboard">
+      <div className={`kboard ${layout === 'stacked' ? 'stacked' : ''}`}>
         {COLUMNS.map((c) => <Column key={c.id} col={c} tasks={by(c.id)} projectId={projectId} />)}
       </div>
     </div>

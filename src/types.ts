@@ -1,10 +1,27 @@
+/** A daily break the scheduler keeps free (lunch, dinner, a walk…). */
+export interface Break {
+  id: string
+  name: string
+  start: string
+  minutes: number
+}
+
+export interface Look {
+  /** Side menu, bottom bar, or whichever fits the screen */
+  nav: 'auto' | 'bar' | 'rail'
+  density: 'compact' | 'cozy' | 'airy'
+  palette: 'blush' | 'linen' | 'sage' | 'lilac'
+  today: 'focus' | 'split'
+  week: 'grid' | 'agenda' | 'day'
+  board: 'columns' | 'stacked'
+}
+
 export interface Settings {
   /** 0 = Sunday … 6 = Saturday */
   workDays: number[]
   dayStart: string
   dayEnd: string
-  lunchStart: string
-  lunchMinutes: number
+  breaks: Break[]
   /** Working days a task is given to be finished unless told otherwise */
   defaultTaskDays: number
   blockMinutes: number
@@ -12,6 +29,7 @@ export interface Settings {
   notifyLeadMinutes: number
   workerUrl: string
   appToken: string
+  look: Look
 }
 
 export interface Project {
@@ -89,12 +107,31 @@ export interface Dump {
   at: number
 }
 
+export type EventKind = 'shift' | 'appointment' | 'personal'
+
+/** Fixed time that is not freelance work, e.g. a shift at a café. */
+export interface CalEvent {
+  id: string
+  title: string
+  kind: EventKind
+  /** The day it happens, or the first day when it repeats (YYYY-MM-DD) */
+  date: string
+  start: string
+  /** HH:mm, later than start on the same day */
+  end: string
+  /** Weekdays it repeats on (0 = Sunday); empty means one-off */
+  repeatDays: number[]
+  /** Last day a repeating event happens; '' means no end */
+  until: string
+}
+
 export interface AppData {
   version: 1
   settings: Settings
   projects: Project[]
   tasks: Task[]
   blocks: Block[]
+  events: CalEvent[]
   entries: TimeEntry[]
   active: ActiveTimer | null
   txns: Txn[]

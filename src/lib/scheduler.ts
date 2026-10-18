@@ -1,4 +1,4 @@
-import type { Block, Settings, Task } from '../types'
+import type { Block, CalEvent, Settings, Task } from '../types'
 import { addDays, fromMin, iso, nowMinutes, toMin, weekday } from './dates'
 import { uid } from './id'
 
@@ -10,13 +10,16 @@ export const DEFAULT_SETTINGS: Settings = {
   workDays: [1, 2, 3, 4, 5],
   dayStart: '09:00',
   dayEnd: '17:00',
-  lunchStart: '13:00',
-  lunchMinutes: 60,
+  breaks: [
+    { id: 'lunch', name: 'Lunch', start: '13:00', minutes: 60 },
+    { id: 'dinner', name: 'Dinner', start: '18:30', minutes: 60 },
+  ],
   defaultTaskDays: 3,
   blockMinutes: 60,
   notifyLeadMinutes: 0,
   workerUrl: '',
   appToken: '',
+  look: { nav: 'auto', density: 'cozy', palette: 'blush', today: 'focus', week: 'grid', board: 'columns' },
 }
 
 export const isWorkDay = (date: string, s: Settings) => s.workDays.includes(weekday(date))
@@ -76,15 +79,32 @@ interface Busy {
   to: number
 }
 
-function busyFor(date: string, blocks: Block[], s: Settings): Busy[] {
-  const busy: Busy[] = blocks
-    .filter((b) => b.date === date && b.start)
-    .map((b) => ({ from: toMin(b.start), to: toMin(b.start) + b.minutes }))
-  if (s.lunchMinutes > 0) {
-    const from = toMin(s.lunchStart)
-    busy.push({ from, to: from + s.lunchMinutes })
+/** Occurrences of fixed events on one day, as minutes from midnight. */
+export function eventsOn(events: CalEvent[], date: string): { event: CalEvent; from: number; to: number }[] {
+  const out: { event: CalEvent; from: number; to: number }[] = []
+  for (const e of events) {
+    const happens = e.repeatDays.length
+      ? e.repeatDays.includes(weekday(date)) && date >= e.date && (!e.until || date <= e.until)
+      : e.date === date
+    if (happens && toMin(e.end) > toMin(e.start)) out.push({ event: e, from: toMin(e.start), to: toMin(e.end) })
+  }
+  return out.sort((a, b) => a.from - b.from)
+}
+
+/** Everything that already owns time on this day apart from work blocks. */
+export function fixedBusy(date: string, s: Settings, events: CalEvent[]): Busy[] {
+  const busy: Busy[] = eventsOn(events, date).map(({ from, to }) => ({ from, to }))
+  for (const b of s.breaks) {
+    if (b.minutes > 0) busy.push({ from: toMin(b.start), to: toMin(b.start) + b.minutes })
   }
   return busy
+}
+
+function busyFor(date: string, blocks: Block[], s: Settings, events: CalEvent[]): Busy[] {
+  const busy = blocks
+    .filter((b) => b.date === date && b.start)
+    .map((b) => ({ from: toMin(b.start), to: toMin(b.start) + b.minutes }))
+  return [...busy, ...fixedBusy(date, s, events)]
 }
 
 function findSlot(
@@ -93,8 +113,9 @@ function findSlot(
   blocks: Block[],
   s: Settings,
   earliest: number,
+  events: CalEvent[],
 ): number | null {
-  const busy = busyFor(date, blocks, s)
+  const busy = busyFor(date, blocks, s, events)
   const end = toMin(s.dayEnd)
   const first = Math.max(toMin(s.dayStart), Math.ceil(earliest / STEP) * STEP)
   for (let t = first; t + minutes <= end; t += STEP) {
@@ -116,6 +137,7 @@ export function placePending(
   blocks: Block[],
   s: Settings,
   now: Date = new Date(),
+  events: CalEvent[] = [],
 ): Block[] {
   if (s.workDays.length === 0) return blocks
   const today = iso(now)
@@ -149,7 +171,7 @@ export function placePending(
       ]
       for (const date of candidates) {
         const earliest = date === today ? Math.ceil(nowMinutes(now) / STEP) * STEP : 0
-        const slot = findSlot(date, block.minutes, result, s, earliest)
+        const slot = findSlot(date, block.minutes, result, s, earliest, events)
         if (slot !== null) {
           block.date = date
           block.start = fromMin(slot)
@@ -186,6 +208,25 @@ export function rollOver(blocks: Block[], now: Date = new Date(), keepId: string
     }
   }
   return out
+}
+
+/**
+ * Blocks that now overlap a break or a fixed event (one was just added, or a
+ * break was moved) go back in the queue. The block being timed stays put.
+ */
+export function unplaceConflicts(
+  blocks: Block[],
+  s: Settings,
+  events: CalEvent[],
+  keepId: string | null = null,
+): Block[] {
+  return blocks.map((b) => {
+    if (!b.date || b.done || b.id === keepId || b.loggedSeconds > 0) return b
+    const from = toMin(b.start)
+    const to = from + b.minutes
+    const hit = fixedBusy(b.date, s, events).some((x) => from < x.to && to > x.from)
+    return hit ? { ...b, date: '', start: '' } : b
+  })
 }
 
 /** Close a block stopped early: keep what was done, re-queue the rest. */

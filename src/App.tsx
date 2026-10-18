@@ -38,8 +38,33 @@ function initialPage(): PageId {
   return 'today'
 }
 
+/** True while the viewport matches a media query. */
+function useMedia(query: string): boolean {
+  const [on, setOn] = useState(() => window.matchMedia(query).matches)
+  useEffect(() => {
+    const mq = window.matchMedia(query)
+    const handle = () => setOn(mq.matches)
+    mq.addEventListener('change', handle)
+    return () => mq.removeEventListener('change', handle)
+  }, [query])
+  return on
+}
+
 export default function App() {
   const { data } = useStore()
+  const wide = useMedia('(min-width: 1000px)')
+  const look = data.settings.look
+  const mode = look.nav === 'auto' ? (wide ? 'rail' : 'bar') : look.nav
+
+  // The palette lives on <html> so the whole page, and the browser chrome, follows it.
+  useEffect(() => {
+    document.documentElement.dataset.palette = look.palette
+    const id = requestAnimationFrame(() => {
+      const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim()
+      if (bg) document.querySelectorAll('meta[name="theme-color"]').forEach((m) => m.setAttribute('content', bg))
+    })
+    return () => cancelAnimationFrame(id)
+  }, [look.palette])
   const [page, setPage] = useState<PageId>(initialPage)
   const [menuOpen, setMenuOpen] = useState(() => {
     try {
@@ -85,7 +110,7 @@ export default function App() {
   }[page]
 
   return (
-    <div className={`app ${menuOpen ? '' : 'menu-closed'}`}>
+    <div className={`app ${menuOpen ? '' : 'menu-closed'}`} data-mode={mode} data-density={look.density}>
       <aside className="rail">
         <div className="mark">studio<span>.</span>flow</div>
         <nav aria-label="Main">

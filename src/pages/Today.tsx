@@ -1,12 +1,15 @@
 import { useState } from 'react'
 import { BlockSheet } from '../components/BlockSheet'
+import { EventSheet } from '../components/EventSheet'
 import { Ring } from '../components/Icons'
 import { useStopTimer } from '../components/TimerDock'
 import { startTimer } from '../lib/actions'
 import { fmtClock, fmtDuration, iso, longDate, nowMinutes, toMin } from '../lib/dates'
-import { isLate } from '../lib/scheduler'
+import { timeLabel } from '../components/Fields'
+import { eventsOn, isLate } from '../lib/scheduler'
 import { activeSeconds, counts, secondsThisWeek, secondsToday } from '../lib/stats'
 import { useNow, useStore } from '../lib/store'
+import type { CalEvent } from '../types'
 import type { PageId } from '../App'
 
 const greeting = () => {
@@ -19,12 +22,18 @@ export function Today({ go }: { go: (p: PageId) => void }) {
   const stop = useStopTimer()
   const now = useNow(!!data.active)
   const [open, setOpen] = useState<string | null>(null)
+  const [eventOpen, setEventOpen] = useState<CalEvent | null>(null)
   const today = iso()
   const mins = nowMinutes()
 
   const todays = data.blocks
     .filter((b) => b.date === today)
     .sort((a, b) => a.start.localeCompare(b.start))
+  const todaysEvents = eventsOn(data.events, today)
+  const rows = [
+    ...todays.map((b) => ({ at: toMin(b.start), block: b, event: undefined as CalEvent | undefined, to: 0 })),
+    ...todaysEvents.map((o) => ({ at: o.from, block: undefined, event: o.event, to: o.to })),
+  ].sort((a, b) => a.at - b.at)
   const next = todays.find((b) => !b.done && toMin(b.start) + b.minutes > mins)
   const late = data.blocks.filter((b) => isLate(b, data.tasks.find((t) => t.id === b.taskId)))
   const c = counts(data)
@@ -39,19 +48,21 @@ export function Today({ go }: { go: (p: PageId) => void }) {
   const nextTask = next ? taskOf(next.taskId) : undefined
 
   return (
-    <div className="page">
+    <div className={`page ${data.settings.look.today === 'split' ? 'today-split' : ''}`}>
       <div className="head">
         <div>
           <div className="eyebrow">{longDate(today)}</div>
           <h1>{greeting()}</h1>
           <p className="lede">
             {todays.filter((b) => !b.done).length > 0
-              ? `${todays.filter((b) => !b.done).length} blocks on your calendar today. One at a time.`
+              ? `${todays.filter((b) => !b.done).length} blocks on your calendar today. One at a time.${todaysEvents.length ? ` Plus ${todaysEvents.length} fixed ${todaysEvents.length === 1 ? 'event' : 'events'}.` : ''}`
               : 'Nothing planned today. That is allowed.'}
           </p>
         </div>
       </div>
 
+      <div className="today-cols">
+      <div className="today-main">
       <div className={`focus ${active ? 'live' : ''}`}>
         <Ring />
         <div className="eyebrow">{active ? 'In focus' : next ? 'Up next' : 'Space'}</div>
@@ -89,14 +100,28 @@ export function Today({ go }: { go: (p: PageId) => void }) {
           <div className="stat"><div className="v">{c.subtasksOpen}</div><div className="l">Open subtasks</div><div className="s">{c.subtasksDone} of {c.subtasksTotal} done</div></div>
         </div>
       </div>
+      </div>
 
+      <div className="today-side">
       <div className="section">
         <div className="row-head"><h2>Your day</h2></div>
-        {todays.length === 0 ? (
+        {rows.length === 0 ? (
           <div className="empty"><b>An open day</b>Rest, or pull something forward from the week.</div>
         ) : (
           <div className="hairs">
-            {todays.map((b) => {
+            {rows.map((r) => {
+              if (r.event) {
+                const e = r.event
+                return (
+                  <button key={e.id} className="item" style={{ width: '100%', textAlign: 'left' }} onClick={() => setEventOpen(e)}>
+                    <span className="time">{timeLabel(r.at)}</span>
+                    <span className={`dot hollow ${e.kind}`} />
+                    <span className="grow"><span className="title">{e.title}</span></span>
+                    <span className="faint small">until {e.end}</span>
+                  </button>
+                )
+              }
+              const b = r.block!
               const t = taskOf(b.taskId)
               return (
                 <button key={b.id} className={`item ${b.done ? 'done' : ''}`} style={{ width: '100%', textAlign: 'left' }} onClick={() => setOpen(b.id)}>
@@ -120,7 +145,11 @@ export function Today({ go }: { go: (p: PageId) => void }) {
         </div>
       )}
 
+      </div>
+      </div>
+
       {open && <BlockSheet blockId={open} onClose={() => setOpen(null)} />}
+      {eventOpen && <EventSheet event={eventOpen} onClose={() => setEventOpen(null)} />}
     </div>
   )
 }

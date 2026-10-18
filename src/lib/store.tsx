@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import type { AppData } from '../types'
+import type { AppData, Settings } from '../types'
 import { emptyData, replan } from './actions'
 import { DEFAULT_SETTINGS } from './scheduler'
 
@@ -12,7 +12,23 @@ function load(): AppData {
     if (raw) {
       const parsed = JSON.parse(raw) as AppData
       if (parsed.version === 1) {
-        return { ...emptyData(), ...parsed, settings: { ...DEFAULT_SETTINGS, ...parsed.settings } }
+        const saved = parsed.settings as Partial<Settings> & { lunchStart?: string; lunchMinutes?: number }
+        // Older saves had a single lunch; it becomes the first break, and dinner is added.
+        const breaks =
+          saved.breaks ??
+          DEFAULT_SETTINGS.breaks.map((b) =>
+            b.id === 'lunch' && saved.lunchStart
+              ? { ...b, start: saved.lunchStart, minutes: saved.lunchMinutes ?? b.minutes }
+              : b,
+          )
+        const { lunchStart: _a, lunchMinutes: _b, ...rest } = saved
+        void _a
+        void _b
+        return {
+          ...emptyData(),
+          ...parsed,
+          settings: { ...DEFAULT_SETTINGS, ...rest, breaks, look: { ...DEFAULT_SETTINGS.look, ...saved.look } },
+        }
       }
     }
   } catch {

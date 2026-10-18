@@ -1,4 +1,4 @@
-import type { AppData, Block, Project, SortedDump, Task, Txn } from '../types'
+import type { AppData, Block, CalEvent, Project, SortedDump, Task, Txn } from '../types'
 import { iso, nowMinutes, stamp, toMin } from './dates'
 import { uid } from './id'
 import {
@@ -8,6 +8,7 @@ import {
   placePending,
   rollOver,
   splitBlock,
+  unplaceConflicts,
 } from './scheduler'
 
 export const PALETTE = ['#9bb3a0', '#d9a88f', '#a9b8cc', '#d8c690', '#c4a9c4', '#b8cbbd']
@@ -18,6 +19,7 @@ export const emptyData = (): AppData => ({
   projects: [],
   tasks: [],
   blocks: [],
+  events: [],
   entries: [],
   active: null,
   txns: [],
@@ -26,8 +28,10 @@ export const emptyData = (): AppData => ({
 
 /** Re-queue missed blocks and place everything that is waiting. */
 export function replan(d: AppData, now: Date = new Date()): AppData {
-  const blocks = placePending(d.tasks, rollOver(d.blocks, now, d.active?.blockId ?? null), d.settings, now)
-  return { ...d, blocks }
+  const keep = d.active?.blockId ?? null
+  const rolled = rollOver(d.blocks, now, keep)
+  const clear = unplaceConflicts(rolled, d.settings, d.events, keep)
+  return { ...d, blocks: placePending(d.tasks, clear, d.settings, now, d.events) }
 }
 
 export function addDump(d: AppData, text: string): { data: AppData; id: string } {
@@ -66,7 +70,7 @@ export function addTask(d: AppData, t: NewTask, now: Date = new Date()): AppData
     createdAt: now.getTime() + d.tasks.length,
   }
   const tasks = [...d.tasks, task]
-  const blocks = placePending(tasks, [...d.blocks, ...makeBlocks(task, d.settings)], d.settings, now)
+  const blocks = placePending(tasks, [...d.blocks, ...makeBlocks(task, d.settings)], d.settings, now, d.events)
   return { ...d, tasks, blocks }
 }
 
@@ -238,3 +242,16 @@ export function deleteTxn(d: AppData, id: string): AppData {
 /** Epoch ms when a block starts. */
 export const blockStart = (b: Block) => stamp(b.date, b.start)
 
+
+/** Add or change a fixed event; work that now clashes with it moves aside. */
+export function saveEvent(d: AppData, e: Omit<CalEvent, 'id'> & { id?: string }): AppData {
+  const event: CalEvent = { ...e, id: e.id ?? uid() }
+  const events = d.events.some((x) => x.id === event.id)
+    ? d.events.map((x) => (x.id === event.id ? event : x))
+    : [...d.events, event]
+  return replan({ ...d, events })
+}
+
+export function deleteEvent(d: AppData, id: string): AppData {
+  return replan({ ...d, events: d.events.filter((e) => e.id !== id) })
+}

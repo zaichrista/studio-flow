@@ -4,6 +4,8 @@ A calm planner for a designer's messy brain. Put everything down in one place; i
 
 - **Brain dump** — write anything. It sorts into projects (with their fee), tasks, subtasks, deadlines and spending. Works with no setup using simple built-in rules (see "How to write it" on the Dump page); connect the optional AI sorter for loose, rambling writing.
 - **Scheduling** — each task gets 3 working days by default and is split into 60-minute blocks, spread across your work days (all adjustable in Settings). Lunch is kept free.
+- **Breaks and outside events** — lunch and dinner (and any other daily break you add) are kept free. Add work shifts, appointments and personal plans, one-off or repeating weekly; your freelance blocks are planned around them, and anything already booked in that time moves to the next free slot.
+- **Layout lab** — Settings → Look & layout: four colour palettes, side menu or bottom bar, three spacing levels, one or two column Today, and week grid / list / single-day calendar and stacked or column board.
 - **Timer tied to blocks** — start the timer in a block and it counts towards that block. Stop at 45 of 60 minutes and the block closes as 45 min done; the missing 15 go back on the calendar. Missed blocks roll forward on their own.
 - **Pay** — set a fixed fee per project; the Work page shows time tracked and what the project is really paying per hour.
 - **Money** — income and spending with a monthly summary (all £).
