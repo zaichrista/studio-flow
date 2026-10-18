@@ -1,0 +1,24 @@
+name = "studio-flow"
+main = "src/index.ts"
+compatibility_date = "2026-10-01"
+
+[vars]
+# Your GitHub Pages origin (no path, no trailing slash), e.g. https://zaira.github.io
+ALLOWED_ORIGIN = "https://zaichrista.github.io"
+VAPID_SUBJECT = "mailto:zcbarakat@gmail.com"
+MODEL = "claude-sonnet-5-5"
+# How often the worker wakes to send reminders. Change both together.
+TICK_MINUTES = "15"
+
+# Created with: npx wrangler kv namespace create REMINDERS
+# then paste the id it prints below.
+[[kv_namespaces]]
+binding = "REMINDERS"
+id = "c73afff3d8504e339ce98d7d0ec3ca11"
+
+# Checks for due reminders every 15 minutes (use "*/30 * * * *" and TICK_MINUTES = "30" for every half hour).
+[triggers]
+crons = ["*/15 * * * *"]
+
+# Secrets (set with `npx wrangler secret put NAME`, never written here):
+#   ANTHROPIC_API_KEY, APP_TOKEN, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY

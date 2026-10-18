@@ -1,0 +1,16 @@
+{
+  "name": "Studio Flow",
+  "short_name": "Studio Flow",
+  "description": "A calm place to put everything down and let it organise itself.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f6f3ee",
+  "theme_color": "#f6f3ee",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
