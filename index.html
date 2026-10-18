@@ -3,8 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#f6f3ee" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#1d1f1c" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f9eeea" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#231e1e" media="(prefers-color-scheme: dark)" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Studio Flow" />
@@ -18,9 +18,28 @@
       href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400&family=Inter:wght@400;500;600&display=swap"
       rel="stylesheet"
     />
+    <style>
+      /* Loading screen: paints before the app bundle, so it is inline. */
+      #splash { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; background: #f9eeea; transition: opacity 1s cubic-bezier(.22,.8,.24,1), visibility 0s 1s; }
+      #splash.out { opacity: 0; visibility: hidden; pointer-events: none; }
+      #splash svg { width: min(34vw, 200px); height: auto; overflow: visible; }
+      #splash .ring { fill: none; stroke: #8fa595; stroke-width: 30; stroke-linecap: round; transform-origin: 256px 256px; transform: rotate(-70deg); stroke-dasharray: 0.001 100; opacity: 0; animation: ring-draw 1.5s .3s cubic-bezier(.45,.05,.25,1) forwards; }
+      #splash .dot { fill: #c99b85; transform-box: fill-box; transform-origin: center; transform: scale(.3); opacity: 0; will-change: transform, opacity; animation: dot-in .9s 1.8s cubic-bezier(.22,.8,.24,1) forwards; }
+      #splash .word { position: absolute; margin-top: min(46vw, 270px); font: 300 22px/1 'Fraunces', Georgia, serif; letter-spacing: -.01em; color: #2f2826; opacity: 0; animation: word-in .9s 2.2s ease forwards; }
+      #splash .word i { color: #8fa595; font-style: normal; }
+      @keyframes ring-draw { 0% { stroke-dasharray: 0.001 100; opacity: 0; } 6% { opacity: 1; } 100% { stroke-dasharray: 87 100; opacity: 1; } }
+      @keyframes dot-in { to { transform: scale(1); opacity: 1; } }
+      @keyframes word-in { to { opacity: .85; } }
+      @media (prefers-color-scheme: dark) { #splash { background: #231e1e; } #splash .word { color: #f0e7e3; } }
+      @media (prefers-reduced-motion: reduce) { #splash .ring { animation: none; stroke-dasharray: 87 100; opacity: 1; } #splash .dot, #splash .word { animation: none; transform: none; opacity: 1; } }
+    </style>
     <title>Studio Flow</title>
   </head>
   <body>
+    <div id="splash" aria-hidden="true">
+      <svg viewBox="0 0 512 512"><circle class="ring" cx="256" cy="256" r="150" pathLength="100" /><circle class="dot" cx="256" cy="256" r="26" /></svg>
+      <div class="word">studio<i>.</i>flow</div>
+    </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

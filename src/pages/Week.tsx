@@ -57,8 +57,8 @@ export function Week() {
           <div className="axis" style={{ height }}>
             {hours.map((h) => <span key={h} style={{ top: (h - from) * H }}>{fromMin(h * 60)}</span>)}
           </div>
-          {days.map((d) => (
-            <div key={d} className={`day ${d === today ? 'today' : ''}`} style={{ height }}>
+          {days.map((d, di) => (
+            <div key={d} className={`day ${d === today ? 'today' : ''}`} style={{ height, ['--i' as string]: di }}>
               {hours.map((h) => <div key={h} className="line" style={{ top: (h - from) * H }} />)}
               {s.lunchMinutes > 0 && (
                 <div className="lunch" style={{ top: y(toMin(s.lunchStart)), height: (s.lunchMinutes / 60) * H }} />
@@ -66,7 +66,7 @@ export function Week() {
               {d === today && nowMinutes() >= from * 60 && nowMinutes() <= to * 60 && (
                 <div className="nowline" style={{ top: y(nowMinutes()) }} />
               )}
-              {data.blocks.filter((b) => b.date === d).map((b) => {
+              {data.blocks.filter((b) => b.date === d).map((b, bi) => {
                 const task = data.tasks.find((t) => t.id === b.taskId)
                 const project = data.projects.find((p) => p.id === task?.projectId)
                 const h = Math.max(22, (b.minutes / 60) * H - 3)
@@ -75,7 +75,7 @@ export function Week() {
                   <button
                     key={b.id}
                     className={cls}
-                    style={{ top: y(toMin(b.start)) + 1, height: h, ['--c' as string]: project?.color ?? 'var(--mist)' }}
+                    style={{ top: y(toMin(b.start)) + 1, height: h, ['--c' as string]: project?.color ?? 'var(--mist)', ['--i' as string]: di + bi }}
                     onClick={() => setOpen(b.id)}
                     aria-label={`${task?.title} at ${b.start}`}
                   >

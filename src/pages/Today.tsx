@@ -52,7 +52,7 @@ export function Today({ go }: { go: (p: PageId) => void }) {
         </div>
       </div>
 
-      <div className="focus">
+      <div className={`focus ${active ? 'live' : ''}`}>
         <Ring />
         <div className="eyebrow">{active ? 'In focus' : next ? 'Up next' : 'Space'}</div>
         {active ? (

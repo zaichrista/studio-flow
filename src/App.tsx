@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { ReactElement } from 'react'
-import { IconBoard, IconDump, IconGear, IconMoney, IconToday, IconWeek, IconWork } from './components/Icons'
+import { IconBoard, IconChevronDown, IconChevronLeft, IconDump, IconGear, IconMoney, IconToday, IconWeek, IconWork, Mark } from './components/Icons'
 import { Toaster } from './components/Toast'
 import { TimerDock } from './components/TimerDock'
 import { syncIfEnabled } from './lib/push'
@@ -26,6 +26,7 @@ const NAV: { id: PageId; label: string; icon: () => ReactElement }[] = [
 ]
 
 const PAGE_KEY = 'studio-flow:page'
+const MENU_KEY = 'studio-flow:menu'
 
 function initialPage(): PageId {
   try {
@@ -40,6 +41,22 @@ function initialPage(): PageId {
 export default function App() {
   const { data } = useStore()
   const [page, setPage] = useState<PageId>(initialPage)
+  const [menuOpen, setMenuOpen] = useState(() => {
+    try {
+      return localStorage.getItem(MENU_KEY) !== 'closed'
+    } catch {
+      return true
+    }
+  })
+
+  const showMenu = (open: boolean) => {
+    setMenuOpen(open)
+    try {
+      localStorage.setItem(MENU_KEY, open ? 'open' : 'closed')
+    } catch {
+      /* ignore */
+    }
+  }
 
   const go = (p: PageId) => {
     setPage(p)
@@ -68,7 +85,7 @@ export default function App() {
   }[page]
 
   return (
-    <div className="app">
+    <div className={`app ${menuOpen ? '' : 'menu-closed'}`}>
       <aside className="rail">
         <div className="mark">studio<span>.</span>flow</div>
         <nav aria-label="Main">
@@ -79,6 +96,11 @@ export default function App() {
             </button>
           ))}
         </nav>
+        <div className="spacer" />
+        <button className="hide-menu" onClick={() => showMenu(false)} aria-label="Hide menu">
+          <IconChevronLeft />
+          Hide menu
+        </button>
       </aside>
       <main className="main">{view}</main>
       <nav className="dock" aria-label="Main">
@@ -88,7 +110,13 @@ export default function App() {
             {label}
           </button>
         ))}
+        <button className="hide-menu" onClick={() => showMenu(false)} aria-label="Hide menu">
+          <IconChevronDown />
+        </button>
       </nav>
+      <button className="menu-fab" onClick={() => showMenu(true)} aria-label="Show menu" tabIndex={menuOpen ? -1 : 0}>
+        <Mark />
+      </button>
       <TimerDock hidden={page === 'today'} />
       <Toaster />
     </div>
