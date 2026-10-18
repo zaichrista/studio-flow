@@ -3,6 +3,7 @@ import { stopTimer } from '../lib/actions'
 import { fmtClock } from '../lib/dates'
 import { activeSeconds } from '../lib/stats'
 import { useNow, useStore } from '../lib/store'
+import { askResume } from './ResumePrompt'
 import { toast } from './Toast'
 
 /** Stop the running timer and say what happened to the block. */
@@ -14,6 +15,7 @@ export function useStopTimer() {
     const block = data.blocks.find((b) => b.id === a.blockId)
     const total = (block?.loggedSeconds ?? 0) + activeSeconds(data)
     update((d) => stopTimer(d))
+    askResume(a.taskId)
     if (!block) return toast('Time saved.')
     const logged = Math.floor(total / 60)
     if (logged < block.minutes) toast(`Logged ${logged} of ${block.minutes} min. The rest is back on your calendar.`)

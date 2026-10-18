@@ -9,6 +9,7 @@ import {
   rollOver,
   splitBlock,
   unplaceConflicts,
+  weekLoad,
   workDates,
 } from './scheduler'
 
@@ -147,7 +148,7 @@ const overlaps = (a: { start: string; minutes: number }, from: string, to: strin
 
 describe('breaks', () => {
   it('keeps dinner free when the working day runs late', () => {
-    const late = { ...S, dayEnd: '21:00' }
+    const late = { ...S, dayEnd: '21:00', bufferMinutes: 0 }
     const t = task({ estimateMinutes: 60 * 12, dueDate: '2026-10-19' })
     const placed = placePending([t], makeBlocks(t, late), late, monday8)
     const today = placed.filter((b) => b.date === '2026-10-19')
@@ -212,5 +213,48 @@ describe('fixed events', () => {
 
   it('ignores a zero or negative length event', () => {
     expect(eventsOn([shift({ start: '10:00', end: '10:00' })], '2026-10-19')).toHaveLength(0)
+  })
+})
+
+describe('breathing room', () => {
+  it('leaves a gap after each block', () => {
+    const t = task({ estimateMinutes: 180, dueDate: '2026-10-19' })
+    const placed = placePending([t], makeBlocks(t, S), S, monday8)
+    expect(placed.map((b) => b.start)).toEqual(['09:00', '10:15', '11:30'])
+  })
+
+  it('packs blocks together when the gap is switched off', () => {
+    const s = { ...S, bufferMinutes: 0 }
+    const t = task({ estimateMinutes: 180, dueDate: '2026-10-19' })
+    const placed = placePending([t], makeBlocks(t, s), s, monday8)
+    expect(placed.map((b) => b.start)).toEqual(['09:00', '10:00', '11:00'])
+  })
+
+  it('keeps room after a shift too', () => {
+    const t = task({ estimateMinutes: 60, dueDate: '2026-10-19' })
+    const [b] = placePending([t], makeBlocks(t, S), S, monday8, [shift({ start: '09:00', end: '11:00' })])
+    expect(b.start).toBe('11:15')
+  })
+})
+
+describe('weekly limit', () => {
+  it('stops filling a week once it reaches the limit, shifts included', () => {
+    const s = { ...S, maxWeekHours: 10, bufferMinutes: 0 }
+    const cafe = shift({ start: '09:00', end: '13:00', repeatDays: [1, 2] })
+    const t = task({ estimateMinutes: 60 * 6, dueDate: '2026-10-23' })
+    const placed = placePending([t], makeBlocks(t, s), s, monday8, [cafe])
+    const thisWeek = placed.filter((b) => b.date <= '2026-10-25')
+    // 8 hours of shifts leave room for 2 hours of freelance work.
+    expect(thisWeek).toHaveLength(2)
+    expect(placed.every((b) => b.date !== '')).toBe(true)
+    expect(weekLoad('2026-10-19', placed, [cafe])).toBe(600)
+  })
+})
+
+describe('putting the day away', () => {
+  it('places nothing new on a closed day', () => {
+    const t = task({ estimateMinutes: 60, dueDate: '2026-10-19' })
+    const [b] = placePending([t], makeBlocks(t, S), S, monday8, [], true)
+    expect(b.date).toBe('2026-10-20')
   })
 })

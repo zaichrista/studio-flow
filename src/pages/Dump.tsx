@@ -1,24 +1,17 @@
 import { useState } from 'react'
 import { Sheet } from '../components/Sheet'
 import { toast } from '../components/Toast'
-import { addDump, applySorted } from '../lib/actions'
+import { IconClose } from '../components/Icons'
+import { addDump, applySorted, deleteIdea, ideaToTask } from '../lib/actions'
 import { ApiError, sortDump } from '../lib/api'
 import { iso, smallDate } from '../lib/dates'
+import { readDraft, writeDraft } from '../lib/draft'
 import { parseDump } from '../lib/parseDump'
-import { money } from '../lib/stats'
+import { estimateRatio, money } from '../lib/stats'
 import { useStore } from '../lib/store'
 import type { SortedDump } from '../types'
 import type { PageId } from '../App'
 
-const DRAFT_KEY = 'studio-flow:draft'
-
-const readDraft = () => {
-  try {
-    return localStorage.getItem(DRAFT_KEY) ?? ''
-  } catch {
-    return ''
-  }
-}
 
 export function Dump({ go }: { go: (p: PageId) => void }) {
   const { data, update } = useStore()
@@ -26,14 +19,13 @@ export function Dump({ go }: { go: (p: PageId) => void }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [result, setResult] = useState<SortedDump | null>(null)
+  const [padIt, setPadIt] = useState(true)
+  const learned = estimateRatio(data)
+  const canPad = !!learned && learned.ratio >= 1.15
 
   const change = (v: string) => {
     setText(v)
-    try {
-      localStorage.setItem(DRAFT_KEY, v)
-    } catch {
-      /* ignore */
-    }
+    writeDraft(v)
   }
 
   const configured = !!data.settings.workerUrl && !!data.settings.appToken
@@ -57,9 +49,13 @@ export function Dump({ go }: { go: (p: PageId) => void }) {
   }
 
   const finish = () => {
-    update((d) => applySorted(addDump(d, text).data, result!))
+    update((d) => applySorted(addDump(d, text).data, result!, new Date(), canPad && padIt ? learned!.ratio : undefined))
     change('')
     setResult(null)
+    if (total === 0) {
+      toast(ideaCount > 0 ? 'Ideas kept safe below.' : 'Saved.')
+      return
+    }
     toast('Placed on your calendar.')
     go('week')
   }
@@ -72,6 +68,10 @@ export function Dump({ go }: { go: (p: PageId) => void }) {
   const total = result
     ? result.projects.reduce((a, p) => a + p.tasks.length, 0) + (result.loose?.length ?? 0)
     : 0
+  const ideaCount = result
+    ? result.projects.reduce((a, p) => a + (p.ideas?.length ?? 0), 0) + (result.ideas?.length ?? 0)
+    : 0
+  const projectName = (id: string | null) => data.projects.find((p) => p.id === id)?.name
 
   return (
     <div className="page">
@@ -116,6 +116,8 @@ export function Dump({ go }: { go: (p: PageId) => void }) {
     pick palette
   send for review
 
+  idea: try a serif wordmark
+
 Reply to emails tomorrow
 Buy Procreate brushes £12`}</pre>
           <ul>
@@ -124,6 +126,7 @@ Buy Procreate brushes £12`}</pre>
             <li><b>Project: task</b> on one line also works.</li>
             <li>Deadlines: <b>by Friday</b>, <b>tomorrow</b>, <b>25 Oct</b>, <b>3/11</b>, <b>next week</b>.</li>
             <li>Time: <b>2h</b>, <b>90 min</b>. Days to finish: <b>5 days</b>.</li>
+            <li>Thoughts that aren't tasks: start with <b>idea:</b>, <b>what if</b> or <b>💡</b>. They're kept safe, never scheduled.</li>
             <li>An amount with a spending word (<b>buy</b>, <b>paid</b>, <b>spent</b>) goes to Money.</li>
             <li>A blank line ends a project's group.</li>
           </ul>
@@ -136,6 +139,31 @@ Buy Procreate brushes £12`}</pre>
           )}
         </div>
       </details>
+
+      <div className="section">
+        <div className="row-head">
+          <h2>Ideas, kept safe</h2>
+          {data.ideas.length > 0 && <span className="faint small">{data.ideas.length}</span>}
+        </div>
+        {data.ideas.length === 0 ? (
+          <div className="ideas-empty">Nothing yet. Thoughts that aren't tasks land here, so they don't clutter your calendar or get lost.</div>
+        ) : (
+          <div className="hairs">
+            {data.ideas.map((i) => (
+              <div key={i.id} className="idea">
+                <div className="grow">
+                  <div className="t">{i.text}</div>
+                  <div className="faint small">{[projectName(i.projectId), smallDate(iso(new Date(i.at)))].filter(Boolean).join(' · ')}</div>
+                </div>
+                <div className="acts">
+                  <button className="btn quiet small" onClick={() => { update((d) => ideaToTask(d, i.id)); toast('Now a task, on your calendar.') }}>Make it a task</button>
+                  <button className="icon-btn" aria-label="Let it go" onClick={() => update((d) => deleteIdea(d, i.id))}><IconClose /></button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       {data.dumps.length > 0 && (
         <div className="section">
@@ -152,7 +180,7 @@ Buy Procreate brushes £12`}</pre>
       )}
 
       {result && (
-        <Sheet title={total === 0 ? 'Nothing to place' : 'Here is what I found'} onClose={() => setResult(null)}>
+        <Sheet title={total === 0 && ideaCount === 0 && !result.expenses?.length ? 'Nothing to place' : 'Here is what I found'} onClose={() => setResult(null)}>
           <div className="stack">
             {result.projects.map((p) => (
               <div key={p.name}>
@@ -169,6 +197,7 @@ Buy Procreate brushes £12`}</pre>
                       {t.subtasks?.length ? <span className="faint"> · {t.subtasks.length} steps</span> : null}
                     </li>
                   ))}
+                  {p.ideas?.map((idea, i) => <li key={`i${i}`} className="faint">💡 {idea}</li>)}
                 </ul>
               </div>
             ))}
@@ -194,9 +223,23 @@ Buy Procreate brushes £12`}</pre>
                 </ul>
               </div>
             )}
+            {!!result.ideas?.length && (
+              <div>
+                <h3>Ideas to keep</h3>
+                <ul className="soft small" style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+                  {result.ideas.map((idea, i) => <li key={i}>{idea}</li>)}
+                </ul>
+              </div>
+            )}
             {result.notes && <div className="faint small">{result.notes}</div>}
+            {canPad && total > 0 && (
+              <label className="toggle">
+                <input className="check sm" type="checkbox" checked={padIt} onChange={(e) => setPadIt(e.target.checked)} />
+                <span>Things usually take you about ×{learned!.ratio} what you plan. Book that much time?</span>
+              </label>
+            )}
             <div className="row" style={{ marginTop: 8 }}>
-              <button className="btn" onClick={finish} disabled={total === 0 && !result.expenses?.length}>Place it</button>
+              <button className="btn" onClick={finish} disabled={total === 0 && !result.expenses?.length && ideaCount === 0}>{total === 0 && ideaCount > 0 ? 'Keep them' : 'Place it'}</button>
               <button className="btn ghost" onClick={() => setResult(null)}>Not quite</button>
             </div>
           </div>

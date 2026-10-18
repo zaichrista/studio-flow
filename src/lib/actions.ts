@@ -1,6 +1,8 @@
-import type { AppData, Block, CalEvent, Project, SortedDump, Task, Txn } from '../types'
+import type { AppData, Block, CalEvent, DayNote, Idea, Invoice, Project, SortedDump, Task, TaskKind, Txn } from '../types'
 import { iso, nowMinutes, stamp, toMin } from './dates'
 import { uid } from './id'
+import { guessKind } from './kind'
+import { parseDump } from './parseDump'
 import {
   defaultDue,
   DEFAULT_SETTINGS,
@@ -24,14 +26,22 @@ export const emptyData = (): AppData => ({
   active: null,
   txns: [],
   dumps: [],
+  ideas: [],
+  days: {},
 })
+
+const closedToday = (d: AppData, now: Date) => d.closedOn === iso(now)
+
+/** Place waiting blocks, keeping a put-away day clear. */
+const place = (d: AppData, tasks: Task[], blocks: Block[], now: Date) =>
+  placePending(tasks, blocks, d.settings, now, d.events, closedToday(d, now))
 
 /** Re-queue missed blocks and place everything that is waiting. */
 export function replan(d: AppData, now: Date = new Date()): AppData {
   const keep = d.active?.blockId ?? null
   const rolled = rollOver(d.blocks, now, keep)
   const clear = unplaceConflicts(rolled, d.settings, d.events, keep)
-  return { ...d, blocks: placePending(d.tasks, clear, d.settings, now, d.events) }
+  return { ...d, blocks: place(d, d.tasks, clear, now) }
 }
 
 export function addDump(d: AppData, text: string): { data: AppData; id: string } {
@@ -46,14 +56,28 @@ interface NewTask {
   estimateMinutes?: number
   dueDate?: string
   daysToComplete?: number
+  firstStep?: string
+  kind?: TaskKind
+  /** Multiply the estimate by this, to match how long things really take */
+  pad?: number
 }
+
+/** Admin is quick; without an estimate it gets half an hour rather than a full block. */
+const ADMIN_MINUTES = 30
+
+/** Round to the scheduler's 15-minute grid, never below 15. */
+const quarter = (m: number) => Math.max(15, Math.round(m / 15) * 15)
 
 export function addTask(d: AppData, t: NewTask, now: Date = new Date()): AppData {
   const today = iso(now)
   const subtasks = (t.subtasks ?? []).filter(Boolean).map((title) => ({ id: uid(), title, done: false }))
-  const estimate = t.estimateMinutes && t.estimateMinutes > 0
+  const kind: TaskKind = t.kind && ['focus', 'ideas', 'admin'].includes(t.kind) ? t.kind : guessKind(t.title)
+  const planned = t.estimateMinutes && t.estimateMinutes > 0
     ? t.estimateMinutes
-    : d.settings.blockMinutes * Math.max(1, subtasks.length)
+    : kind === 'admin' && subtasks.length === 0
+      ? Math.min(ADMIN_MINUTES, d.settings.blockMinutes)
+      : d.settings.blockMinutes * Math.max(1, subtasks.length)
+  const estimate = t.pad && t.pad > 1 ? quarter(planned * t.pad) : planned
   const dueDate =
     t.dueDate && t.dueDate >= today
       ? t.dueDate
@@ -68,16 +92,22 @@ export function addTask(d: AppData, t: NewTask, now: Date = new Date()): AppData
     dueDate,
     done: false,
     createdAt: now.getTime() + d.tasks.length,
+    ...(t.firstStep?.trim() ? { firstStep: t.firstStep.trim() } : {}),
+    kind,
   }
   const tasks = [...d.tasks, task]
-  const blocks = placePending(tasks, [...d.blocks, ...makeBlocks(task, d.settings)], d.settings, now, d.events)
+  const blocks = place(d, tasks, [...d.blocks, ...makeBlocks(task, d.settings)], now)
   return { ...d, tasks, blocks }
 }
 
 /** Turn the AI's tidy-up of a brain dump into projects, tasks and spending. */
-export function applySorted(d: AppData, sorted: SortedDump, now: Date = new Date()): AppData {
+export function applySorted(d: AppData, sorted: SortedDump, now: Date = new Date(), pad?: number): AppData {
   let next = d
   const projects = [...d.projects]
+  const ideas: Idea[] = []
+  const keepIdea = (text: string, projectId: string | null) => {
+    if (text.trim()) ideas.push({ id: uid(), text: text.trim(), projectId, at: now.getTime() + ideas.length })
+  }
 
   for (const p of sorted.projects) {
     const name = p.name.trim()
@@ -97,10 +127,12 @@ export function applySorted(d: AppData, sorted: SortedDump, now: Date = new Date
       project.pay = p.pay
     }
     next = { ...next, projects: [...projects] }
-    for (const t of p.tasks) next = addTask(next, { ...t, projectId: project.id }, now)
+    for (const t of p.tasks) next = addTask(next, { ...t, projectId: project.id, pad }, now)
+    for (const i of p.ideas ?? []) keepIdea(i, project.id)
   }
 
-  for (const t of sorted.loose ?? []) next = addTask(next, { ...t, projectId: null }, now)
+  for (const t of sorted.loose ?? []) next = addTask(next, { ...t, projectId: null, pad }, now)
+  for (const i of sorted.ideas ?? []) keepIdea(i, null)
 
   const txns: Txn[] = (sorted.expenses ?? [])
     .filter((e) => e.amount > 0)
@@ -112,7 +144,44 @@ export function applySorted(d: AppData, sorted: SortedDump, now: Date = new Date
       category: e.category?.trim() || 'Other',
       note: e.note,
     }))
-  return { ...next, txns: [...next.txns, ...txns] }
+  return { ...next, txns: [...next.txns, ...txns], ideas: [...ideas.reverse(), ...next.ideas] }
+}
+
+export function deleteIdea(d: AppData, id: string): AppData {
+  return { ...d, ideas: d.ideas.filter((i) => i.id !== id) }
+}
+
+/** An idea grows up: it becomes a task on the calendar and leaves the bin. */
+export function ideaToTask(d: AppData, id: string, now: Date = new Date()): AppData {
+  const idea = d.ideas.find((i) => i.id === id)
+  if (!idea) return d
+  return deleteIdea(addTask(d, { projectId: idea.projectId, title: idea.text }, now), id)
+}
+
+/** Edit the small bits of a task: its first step, where you were up to. */
+export function patchTask(d: AppData, id: string, patch: Partial<Pick<Task, 'firstStep' | 'resumeNote' | 'title' | 'kind'>>): AppData {
+  const next = { ...d, tasks: d.tasks.map((t) => (t.id === id ? { ...t, ...patch } : t)) }
+  if (!patch.kind) return next
+  // A new kind may want a different part of the day: move its untouched blocks.
+  const blocks = next.blocks.map((b) =>
+    b.taskId === id && !b.done && b.loggedSeconds === 0 && b.id !== d.active?.blockId ? { ...b, date: '', start: '' } : b,
+  )
+  return replan({ ...next, blocks })
+}
+
+/**
+ * Put it down from anywhere: sort with the built-in rules and place it,
+ * no review step. (The Dump page still offers the careful version.)
+ */
+export function quickCapture(d: AppData, text: string, now: Date = new Date()): AppData {
+  return applySorted(addDump(d, text).data, parseDump(text, now), now)
+}
+
+/** Not now: this block moves to the next free slot at least `minutes` from now. */
+export function snoozeBlock(d: AppData, id: string, now: Date = new Date(), minutes = 60): AppData {
+  const after = now.getTime() + minutes * 60_000
+  const blocks = d.blocks.map((b) => (b.id === id ? { ...b, date: '', start: '', after } : b))
+  return replan({ ...d, blocks }, now)
 }
 
 export type Status = 'todo' | 'doing' | 'done'
@@ -122,7 +191,9 @@ export const statusOf = (t: Task): Status => (t.done ? 'done' : t.doing ? 'doing
 /** Move a task between To do, Doing and Done. */
 export function setStatus(d: AppData, id: string, status: Status): AppData {
   const tasks = d.tasks.map((t) =>
-    t.id === id ? { ...t, done: status === 'done', doing: status === 'doing' } : t,
+    t.id === id
+      ? { ...t, done: status === 'done', doing: status === 'doing', doneAt: status === 'done' ? (t.done ? t.doneAt : Date.now()) : undefined }
+      : t,
   )
   // Finished tasks give their unstarted blocks back to the calendar.
   const blocks =
@@ -143,7 +214,7 @@ export function toggleSubtask(d: AppData, taskId: string, subId: string): AppDat
     ...d,
     tasks: d.tasks.map((t) =>
       t.id === taskId
-        ? { ...t, subtasks: t.subtasks.map((s) => (s.id === subId ? { ...s, done: !s.done } : s)) }
+        ? { ...t, subtasks: t.subtasks.map((s) => (s.id === subId ? { ...s, done: !s.done, doneAt: s.done ? undefined : Date.now() } : s)) }
         : t,
     ),
   }
@@ -205,14 +276,14 @@ export function blockForNow(d: AppData, taskId: string, now: Date = new Date()):
   )
 }
 
-export function startTimer(d: AppData, taskId: string, blockId?: string | null, now: Date = new Date()): AppData {
+export function startTimer(d: AppData, taskId: string, blockId?: string | null, now: Date = new Date(), trial?: number): AppData {
   const stopped = d.active ? stopTimer(d, now) : d
   const linked = blockId === undefined ? blockForNow(stopped, taskId, now)?.id ?? null : blockId
   const started = {
     ...stopped,
     tasks: stopped.tasks.map((t) => (t.id === taskId && !t.done ? { ...t, doing: true } : t)),
   }
-  return { ...started, active: { taskId, blockId: linked, startedAt: now.getTime() } }
+  return { ...started, active: { taskId, blockId: linked, startedAt: now.getTime(), ...(trial ? { trial } : {}) } }
 }
 
 export function stopTimer(d: AppData, now: Date = new Date()): AppData {
@@ -254,4 +325,66 @@ export function saveEvent(d: AppData, e: Omit<CalEvent, 'id'> & { id?: string })
 
 export function deleteEvent(d: AppData, id: string): AppData {
   return replan({ ...d, events: d.events.filter((e) => e.id !== id) })
+}
+
+
+/** The invoice has gone out. */
+export function sendInvoice(d: AppData, projectId: string, invoice: Omit<Invoice, 'paidOn'>): AppData {
+  return { ...d, projects: d.projects.map((p) => (p.id === projectId ? { ...p, invoice } : p)) }
+}
+
+export function unsendInvoice(d: AppData, projectId: string): AppData {
+  return {
+    ...d,
+    projects: d.projects.map((p) => (p.id === projectId ? { ...p, invoice: undefined } : p)),
+    txns: d.txns.filter((t) => !(t.projectId === projectId && t.kind === 'income' && t.category === 'Client work')),
+  }
+}
+
+/** The money landed: mark it paid and record the income in Money. */
+export function markPaid(d: AppData, projectId: string, date: string = iso()): AppData {
+  const p = d.projects.find((x) => x.id === projectId)
+  if (!p) return d
+  const invoice: Invoice = { sentOn: p.invoice?.sentOn ?? date, termsDays: p.invoice?.termsDays ?? 14, paidOn: date }
+  const withPaid = { ...d, projects: d.projects.map((x) => (x.id === projectId ? { ...x, invoice } : x)) }
+  if (p.pay <= 0) return withPaid
+  return addTxn(withPaid, { kind: 'income', amount: p.pay, date, category: 'Client work', note: p.name, projectId })
+}
+
+/**
+ * Put the day away: anything still planned for later today moves to another
+ * day, and nothing new lands on today.
+ */
+export function closeDay(d: AppData, now: Date = new Date()): AppData {
+  const today = iso(now)
+  const keep = d.active?.blockId ?? null
+  const blocks = d.blocks.map((b) =>
+    b.date === today && !b.done && b.loggedSeconds === 0 && b.id !== keep ? { ...b, date: '', start: '' } : b,
+  )
+  const put = setDayNote({ ...d, blocks, closedOn: today }, today, { closedAt: now.getTime() })
+  return put.active ? stopTimer(put, now) : replan(put, now)
+}
+
+/** Changed your mind: today is open for work again. */
+export function reopenDay(d: AppData, now: Date = new Date()): AppData {
+  return replan({ ...d, closedOn: undefined }, now)
+}
+
+/** Write the day's intention or good thing. Empty text clears it. */
+export function setDayNote(d: AppData, date: string, patch: Partial<DayNote>): AppData {
+  const note: DayNote = { ...d.days[date], ...patch }
+  for (const k of Object.keys(note) as (keyof DayNote)[]) {
+    const v = note[k]
+    if (v === undefined || (typeof v === 'string' && !v.trim()) || (Array.isArray(v) && v.length === 0)) delete note[k]
+  }
+  const days = { ...d.days }
+  if (Object.keys(note).length) days[date] = note
+  else delete days[date]
+  return { ...d, days }
+}
+
+/** Tick or untick one little act of care for today. */
+export function toggleCare(d: AppData, date: string, key: string): AppData {
+  const care = d.days[date]?.care ?? []
+  return setDayNote(d, date, { care: care.includes(key) ? care.filter((c) => c !== key) : [...care, key] })
 }

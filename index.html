@@ -3,8 +3,18 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#f9eeea" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#231e1e" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f9eeea" />
+    <script>
+      // Light or dark before anything paints: your choice in the app, or the iPad's.
+      (function () {
+        var look = {}
+        try { look = (JSON.parse(localStorage.getItem('studio-flow:v2') || '{}').settings || {}).look || {} } catch (e) {}
+        var pick = look.theme === 'light' || look.theme === 'dark' ? look.theme : matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+        document.documentElement.dataset.theme = pick
+        if (look.palette) document.documentElement.dataset.palette = look.palette
+        document.querySelector('meta[name="theme-color"]').content = pick === 'dark' ? '#231e1e' : '#f9eeea'
+      })()
+    </script>
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Studio Flow" />
@@ -22,6 +32,8 @@
       /* Loading screen: paints before the app bundle, so it is inline. */
       #splash { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; background: #f9eeea; transition: opacity 1s cubic-bezier(.22,.8,.24,1), visibility 0s 1s; }
       #splash.out { opacity: 0; visibility: hidden; pointer-events: none; }
+      #splash.quick { transition-duration: .45s, 0s; transition-delay: 0s, .45s; }
+      #splash.quick * { animation: none !important; opacity: 0 !important; }
       #splash svg { width: min(34vw, 200px); height: auto; overflow: visible; }
       #splash .ring { fill: none; stroke: #8fa595; stroke-width: 30; stroke-linecap: round; transform-origin: 256px 256px; transform: rotate(-70deg); stroke-dasharray: 0.001 100; opacity: 0; animation: ring-draw 1.5s .3s cubic-bezier(.45,.05,.25,1) forwards; }
       #splash .dot { fill: #c99b85; transform-box: fill-box; transform-origin: center; transform: scale(.3); opacity: 0; will-change: transform, opacity; animation: dot-in .9s 1.8s cubic-bezier(.22,.8,.24,1) forwards; }
@@ -30,7 +42,8 @@
       @keyframes ring-draw { 0% { stroke-dasharray: 0.001 100; opacity: 0; } 6% { opacity: 1; } 100% { stroke-dasharray: 87 100; opacity: 1; } }
       @keyframes dot-in { to { transform: scale(1); opacity: 1; } }
       @keyframes word-in { to { opacity: .85; } }
-      @media (prefers-color-scheme: dark) { #splash { background: #231e1e; } #splash .word { color: #f0e7e3; } }
+      :root[data-theme="dark"] #splash { background: #231e1e; }
+      :root[data-theme="dark"] #splash .word { color: #f0e7e3; }
       @media (prefers-reduced-motion: reduce) { #splash .ring { animation: none; stroke-dasharray: 87 100; opacity: 1; } #splash .dot, #splash .word { animation: none; transform: none; opacity: 1; } }
     </style>
     <title>Studio Flow</title>

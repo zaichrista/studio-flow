@@ -18,12 +18,15 @@ const PUSH_COPY: Record<PushState, string> = {
   'needs-install': 'On iPad, open this page in Safari, tap Share, then “Add to Home Screen”, and open it from the Home Screen. Then come back here.',
   blocked: 'Notifications are blocked. Turn them on in iPad Settings → Notifications → Studio Flow.',
   off: 'Off. Turn on to get a nudge before each block, even when the app is closed.',
-  on: 'On. You will be nudged before each block, and when a timed hour is up.',
+  on: 'On. A heads-up before each block, a nudge when it starts, and a gentle word at the end of the day.',
 }
 
 const BLOCK_MINUTES = [30, 45, 60, 90, 120]
 const BREAK_MINUTES = [15, 30, 45, 60, 90, 120]
 const LEAD_MINUTES = [0, 5, 10, 15, 30]
+const WRAP_MINUTES = [0, 5, 10]
+const BUFFER_MINUTES = [0, 5, 10, 15, 20, 30]
+const WEEK_HOURS = [0, 15, 20, 25, 30, 35, 40, 45, 50]
 
 const PALETTES: { id: Look['palette']; name: string; color: string }[] = [
   { id: 'blush', name: 'Blush', color: '#f9eeea' },
@@ -43,7 +46,9 @@ function DayLine({ s }: { s: S }) {
     return Math.max(0, Math.min(b, from + br.minutes) - Math.max(a, from))
   }
   const open = Math.max(0, b - a - s.breaks.reduce((n, br) => n + overlap(br), 0))
-  const blocks = Math.floor(open / s.blockMinutes)
+  // Blocks sit on a 15-minute grid, so the pause after one rounds up to it.
+  const pause = Math.ceil(s.bufferMinutes / 15) * 15
+  const blocks = Math.floor((open + pause) / (s.blockMinutes + pause))
   return (
     <div className="dayline">
       <div className="track" aria-hidden="true">
@@ -53,7 +58,8 @@ function DayLine({ s }: { s: S }) {
         ))}
       </div>
       <div className="faint small">
-        {s.dayStart}–{s.dayEnd}. Room for {blocks} {blocks === 1 ? 'block' : 'blocks'} of {s.blockMinutes} min a day around your breaks.
+        {s.dayStart}–{s.dayEnd}. Room for about {blocks} {blocks === 1 ? 'block' : 'blocks'} of {s.blockMinutes} min a day around your breaks
+        {s.bufferMinutes > 0 ? `, with ${s.bufferMinutes} min to breathe after each.` : '.'}
       </div>
     </div>
   )
@@ -193,6 +199,21 @@ export function Settings() {
               </Pick>
             </div>
             <div className="faint small">New tasks use these. Blocks already on your calendar keep their length.</div>
+
+            <div className="lab-row">
+              <Pick name="Breathing room after a block" value={s.bufferMinutes} onChange={(v) => set({ bufferMinutes: Number(v) }, true)}>
+                {withCurrent(BUFFER_MINUTES, s.bufferMinutes).map((m) => <option key={m} value={m}>{m === 0 ? 'None, back to back' : `${m} minutes`}</option>)}
+              </Pick>
+              <Pick name="Most hours in a week" value={s.maxWeekHours} onChange={(v) => set({ maxWeekHours: Number(v) }, true)}>
+                {withCurrent(WEEK_HOURS, s.maxWeekHours).map((h) => <option key={h} value={h}>{h === 0 ? 'No limit' : `${h} hours`}</option>)}
+              </Pick>
+            </div>
+            <div>
+              <div className="small soft" style={{ marginBottom: 8 }}>When is your head clearest?</div>
+              <Seg label="When is your head clearest" value={s.clearest} options={[['morning', 'Mornings'], ['afternoon', 'Afternoons'], ['any', "I don't mind"]]} onChange={(clearest) => set({ clearest }, true)} />
+              <div className="faint small" style={{ marginTop: 8 }}>Focus work goes to those hours. Ideas and admin go to the other half of the day: a slightly less sharp mind is better at loose, creative thinking, and admin batches together instead of breaking up deep work.</div>
+            </div>
+            <div className="faint small">A short pause between blocks helps ideas settle. The weekly limit counts shifts too; once a week is full, work waits for the next one instead of creeping into your evenings.</div>
           </div>
         </section>
 
@@ -212,6 +233,15 @@ export function Settings() {
               </div>
             </div>
             <div>
+              <div className="small soft" style={{ marginBottom: 8 }}>Light & dark</div>
+              <Seg label="Light and dark" value={s.look.theme} options={[['auto', 'Match iPad'], ['light', 'Light'], ['dark', 'Dark']]} onChange={(theme) => setLook({ theme })} />
+              <div className="faint small" style={{ marginTop: 8 }}>The sun in the top corner swaps them in one tap.</div>
+            </div>
+            <div>
+              <div className="small soft" style={{ marginBottom: 8 }}>Surfaces</div>
+              <Seg label="Surfaces" value={s.look.surface} options={[['soft', 'Soft'], ['glass', 'Liquid glass']]} onChange={(surface) => setLook({ surface })} />
+            </div>
+            <div>
               <div className="small soft" style={{ marginBottom: 8 }}>Menu</div>
               <Seg label="Menu" value={s.look.nav} options={[['auto', 'Fits the screen'], ['rail', 'Side menu'], ['bar', 'Bottom bar']]} onChange={(nav) => setLook({ nav })} />
             </div>
@@ -226,6 +256,10 @@ export function Settings() {
             <div>
               <div className="small soft" style={{ marginBottom: 8 }}>Calendar</div>
               <Seg label="Calendar layout" value={s.look.week} options={[['grid', 'Week grid'], ['agenda', 'List'], ['day', 'One day']]} onChange={(week) => setLook({ week })} />
+            </div>
+            <div>
+              <div className="small soft" style={{ marginBottom: 8 }}>Opening animation</div>
+              <Seg label="Opening animation" value={s.splash} options={[['always', 'Every time'], ['daily', 'Once a day']]} onChange={(splash) => set({ splash })} />
             </div>
             <div>
               <div className="small soft" style={{ marginBottom: 8 }}>Board</div>
@@ -243,10 +277,19 @@ export function Settings() {
           <div className="stack">
             <label className="lab">Worker address<input className="field" inputMode="url" autoCapitalize="none" autoCorrect="off" placeholder="https://studio-flow.yourname.workers.dev" value={s.workerUrl} onChange={(e) => set({ workerUrl: e.target.value.trim() })} /></label>
             <label className="lab">Passphrase<input className="field" type="password" autoComplete="off" value={s.appToken} onChange={(e) => set({ appToken: e.target.value })} /></label>
-            <Pick name="Extra heads-up before a block" value={s.notifyLeadMinutes} onChange={(v) => set({ notifyLeadMinutes: Number(v) })}>
-              {withCurrent(LEAD_MINUTES, s.notifyLeadMinutes).map((m) => <option key={m} value={m}>{m === 0 ? 'None' : `${m} minutes earlier`}</option>)}
-            </Pick>
-            <div className="faint small">The worker checks every 15 minutes, so a block's reminder arrives up to 15 minutes before it starts, plus any extra you add here.</div>
+            <div className="lab-row">
+              <Pick name="Heads-up before a block" value={s.headsUpMinutes} onChange={(v) => set({ headsUpMinutes: Number(v) })}>
+                {withCurrent(LEAD_MINUTES, s.headsUpMinutes).map((m) => <option key={m} value={m}>{m === 0 ? 'None, just at the start' : `${m} minutes before`}</option>)}
+              </Pick>
+              <Pick name="Wrap-up nudge while timing" value={s.wrapUpMinutes} onChange={(v) => set({ wrapUpMinutes: Number(v) })}>
+                {withCurrent(WRAP_MINUTES, s.wrapUpMinutes).map((m) => <option key={m} value={m}>{m === 0 ? 'Off' : `${m} minutes before the end`}</option>)}
+              </Pick>
+            </div>
+            <div>
+              <div className="small soft" style={{ marginBottom: 8 }}>End-of-day nudge at {s.dayEnd}</div>
+              <Seg label="End-of-day nudge" value={s.shutdownNudge ? 'on' : 'off'} options={[['on', 'On'], ['off', 'Off']]} onChange={(v) => set({ shutdownNudge: v === 'on' })} />
+            </div>
+            <div className="faint small">Each nudge says what to start with: where you left off, the first step, or the next subtask. Invoice due dates and tax days get a quiet morning nudge too. The worker checks every 5 minutes, so nudges land within a few minutes of their time.</div>
             <div className={`notice ${push === 'on' ? 'ok' : ''}`}>{PUSH_COPY[push]}</div>
             <div className="row" style={{ flexWrap: 'wrap' }}>
               {push === 'on' ? (

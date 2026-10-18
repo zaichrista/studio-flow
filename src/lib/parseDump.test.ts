@@ -76,4 +76,17 @@ Buy fonts £30`)
   it('returns nothing for empty input', () => {
     expect(p('  \n\n')).toEqual({ projects: [] })
   })
+
+  it('keeps ideas apart from tasks', () => {
+    const r = p('idea: a risograph zine for the café\nWhat if the logo was hand-lettered\n💡 blush and olive palette\nReply to emails')
+    expect(r.ideas).toEqual(['a risograph zine for the café', 'What if the logo was hand-lettered', 'blush and olive palette'])
+    expect(r.loose?.map((t) => t.title)).toEqual(['Reply to emails'])
+  })
+
+  it('files ideas under the project they were written in', () => {
+    const r = p('Maya logo £800:\n  Moodboard\n  idea: try a serif wordmark')
+    expect(r.projects[0].ideas).toEqual(['try a serif wordmark'])
+    expect(r.projects[0].tasks.map((t) => t.title)).toEqual(['Moodboard'])
+    expect(r.ideas).toBeUndefined()
+  })
 })

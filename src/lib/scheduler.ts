@@ -1,6 +1,7 @@
 import type { Block, CalEvent, Settings, Task } from '../types'
-import { addDays, fromMin, iso, nowMinutes, toMin, weekday } from './dates'
+import { addDays, fromMin, iso, monday, nowMinutes, toMin, weekday } from './dates'
 import { uid } from './id'
+import { kindOf, preferredWindow } from './kind'
 
 const STEP = 15
 /** How far past a deadline we'll look for room before giving up */
@@ -17,10 +18,17 @@ export const DEFAULT_SETTINGS: Settings = {
   ],
   defaultTaskDays: 3,
   blockMinutes: 60,
-  notifyLeadMinutes: 0,
+  bufferMinutes: 10,
+  maxWeekHours: 0,
+  headsUpMinutes: 10,
+  wrapUpMinutes: 5,
+  shutdownNudge: true,
+  clearest: 'morning',
+  splash: 'always',
+  taxPercent: 25,
   workerUrl: '',
   appToken: '',
-  look: { nav: 'auto', density: 'cozy', palette: 'blush', today: 'focus', week: 'grid', board: 'columns' },
+  look: { nav: 'auto', density: 'cozy', palette: 'blush', today: 'focus', week: 'grid', board: 'columns', surface: 'soft', theme: 'auto' },
 }
 
 export const isWorkDay = (date: string, s: Settings) => s.workDays.includes(weekday(date))
@@ -101,11 +109,33 @@ export function fixedBusy(date: string, s: Settings, events: CalEvent[]): Busy[]
   return busy
 }
 
+/**
+ * Time already taken on a day. Work blocks and events keep a little breathing
+ * room around them (`bufferMinutes`); breaks are rest already, so they don't.
+ */
 function busyFor(date: string, blocks: Block[], s: Settings, events: CalEvent[]): Busy[] {
+  const pad = Math.max(0, s.bufferMinutes ?? 0)
   const busy = blocks
     .filter((b) => b.date === date && b.start)
+    .map((b) => ({ from: toMin(b.start) - pad, to: toMin(b.start) + b.minutes + pad }))
+  const fixed = eventsOn(events, date).map(({ from, to }) => ({ from: from - pad, to: to + pad }))
+  const rest = s.breaks
+    .filter((b) => b.minutes > 0)
     .map((b) => ({ from: toMin(b.start), to: toMin(b.start) + b.minutes }))
-  return [...busy, ...fixedBusy(date, s, events)]
+  return [...busy, ...fixed, ...rest]
+}
+
+/** Minutes of work blocks and shifts in the Monday–Sunday week holding `date`. */
+export function weekLoad(date: string, blocks: Block[], events: CalEvent[]): number {
+  const from = monday(date)
+  const to = addDays(from, 6)
+  let total = blocks
+    .filter((b) => b.date >= from && b.date <= to)
+    .reduce((n, b) => n + b.minutes, 0)
+  for (let d = from; d <= to; d = addDays(d, 1)) {
+    for (const o of eventsOn(events, d)) if (o.event.kind === 'shift') total += o.to - o.from
+  }
+  return total
 }
 
 function findSlot(
@@ -115,12 +145,20 @@ function findSlot(
   s: Settings,
   earliest: number,
   events: CalEvent[],
+  prefer: { from: number; to: number } | null = null,
 ): number | null {
   const busy = busyFor(date, blocks, s, events)
   const end = toMin(s.dayEnd)
   const first = Math.max(toMin(s.dayStart), Math.ceil(earliest / STEP) * STEP)
+  const free = (t: number) => !busy.some((b) => t < b.to && t + minutes > b.from)
+  // The preferred part of the day first, then anywhere that fits.
+  if (prefer) {
+    for (let t = Math.max(first, Math.ceil(prefer.from / STEP) * STEP); t + minutes <= Math.min(end, prefer.to); t += STEP) {
+      if (free(t)) return t
+    }
+  }
   for (let t = first; t + minutes <= end; t += STEP) {
-    if (!busy.some((b) => t < b.to && t + minutes > b.from)) return t
+    if (free(t)) return t
   }
   return null
 }
@@ -139,7 +177,10 @@ export function placePending(
   s: Settings,
   now: Date = new Date(),
   events: CalEvent[] = [],
+  /** The day has been put away: nothing new lands on it */
+  closedToday = false,
 ): Block[] {
+  const cap = (s.maxWeekHours ?? 0) * 60
   if (s.workDays.length === 0) return blocks
   const today = iso(now)
   const result = blocks.map((b) => ({ ...b }))
@@ -158,6 +199,7 @@ export function placePending(
 
   for (const task of order) {
     const pending = byTask.get(task.id)!
+    const prefer = preferredWindow(kindOf(task), s)
     const from = task.startDate > today ? task.startDate : today
     const window = workDatesBetween(from, task.dueDate, s)
     const overflow = workDates(addDays(window[window.length - 1], 1), OVERFLOW_DAYS, s)
@@ -171,8 +213,17 @@ export function placePending(
         ...overflow,
       ]
       for (const date of candidates) {
-        const earliest = date === today ? Math.ceil(nowMinutes(now) / STEP) * STEP : 0
-        const slot = findSlot(date, block.minutes, result, s, earliest, events)
+        if (closedToday && date === today) continue
+        if (cap > 0 && weekLoad(date, result, events) + block.minutes > cap) continue
+        let earliest = date === today ? Math.ceil(nowMinutes(now) / STEP) * STEP : 0
+        // "Not now": nothing before the moment it was pushed back to.
+        if (block.after) {
+          const wait = new Date(block.after)
+          const waitDay = iso(wait)
+          if (date < waitDay) continue
+          if (date === waitDay) earliest = Math.max(earliest, nowMinutes(wait))
+        }
+        const slot = findSlot(date, block.minutes, result, s, earliest, events, prefer)
         if (slot !== null) {
           block.date = date
           block.start = fromMin(slot)

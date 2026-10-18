@@ -1,14 +1,16 @@
 import { useState } from 'react'
 import { IconClose } from '../components/Icons'
 import { Sheet } from '../components/Sheet'
-import { addTxn, deleteTxn } from '../lib/actions'
-import { iso, monthLabel, smallDate } from '../lib/dates'
-import { money, monthSummary } from '../lib/stats'
+import { toast } from '../components/Toast'
+import { addTxn, deleteTxn, markPaid } from '../lib/actions'
+import { iso, longDate, monthLabel, smallDate } from '../lib/dates'
+import { awaitingPayment, daysBetween, invoiceDue, money, monthSummary, nextTaxDay, taxSetAside, taxYear } from '../lib/stats'
 import { useStore } from '../lib/store'
 import type { Txn } from '../types'
 
 const EXPENSE_CATS = ['Software', 'Supplies', 'Food', 'Bills', 'Travel', 'Fun', 'Other']
 const INCOME_CATS = ['Client work', 'Other']
+const TAX_PERCENTS = [15, 20, 25, 30, 35, 40, 45]
 
 function shiftMonth(month: string, n: number): string {
   const [y, m] = month.split('-').map(Number)
@@ -65,7 +67,18 @@ export function Money() {
   const sum = monthSummary(data, month)
   const top = sum.categories[0]?.[1] ?? 1
   const rows = [...sum.rows].sort((a, b) => b.date.localeCompare(a.date))
-  const booked = data.projects.reduce((a, p) => a + p.pay, 0)
+  const today = iso()
+  const pct = data.settings.taxPercent
+  const monthTax = taxSetAside(data, `${month}-01`, `${month}-31`)
+  const year = taxYear(today)
+  const yearTax = taxSetAside(data, year.from, today)
+  const taxDay = nextTaxDay(today)
+  const toTaxDay = daysBetween(today, taxDay)
+  const safe = sum.income - monthTax - sum.expense
+  const waiting = awaitingPayment(data)
+  const waitingTotal = waiting.reduce((a, p) => a + p.pay, 0)
+  const unbilled = data.projects.filter((p) => p.pay > 0 && !p.invoice && !p.archived).reduce((a, p) => a + p.pay, 0)
+  const setPct = (n: number) => update((d) => ({ ...d, settings: { ...d.settings, taxPercent: n } }))
 
   return (
     <div className="page">
@@ -85,8 +98,64 @@ export function Money() {
       <div className="cols three">
         <div><div className="eyebrow">In</div><div className="big pos">{money(sum.income)}</div></div>
         <div><div className="eyebrow">Out</div><div className="big">{money(sum.expense)}</div></div>
-        <div><div className="eyebrow">Left</div><div className={`big ${sum.net < 0 ? 'neg' : ''}`}>{money(sum.net)}</div></div>
+        <div>
+          <div className="eyebrow">Safe to spend</div>
+          <div className={`big ${safe < 0 ? 'neg' : ''}`}>{money(Math.round(safe * 100) / 100)}</div>
+          <div className="faint small" style={{ marginTop: 6 }}>after {pct}% for tax</div>
+        </div>
       </div>
+
+      <div className="section">
+        <div className="row-head"><h2>Tax pot</h2></div>
+        <div className="card flat wash-sage stack">
+          <div className="cols two">
+            <div>
+              <div className="eyebrow">Put aside this month</div>
+              <div className="big" style={{ fontSize: 'clamp(28px,4vw,38px)', marginTop: 8 }}>{money(monthTax)}</div>
+              <div className="faint small" style={{ marginTop: 6 }}>{pct}% of {money(sum.income)} in</div>
+            </div>
+            <div>
+              <div className="eyebrow">This tax year so far</div>
+              <div className="big" style={{ fontSize: 'clamp(28px,4vw,38px)', marginTop: 8 }}>{money(yearTax)}</div>
+              <div className="faint small" style={{ marginTop: 6 }}>since {smallDate(year.from)}</div>
+            </div>
+          </div>
+          <div className={`notice ${toTaxDay <= 45 ? '' : 'ok'}`} style={{ background: toTaxDay <= 45 ? undefined : 'var(--raised)' }}>
+            Next tax day: <b>{longDate(taxDay)}</b>, in {toTaxDay} {toTaxDay === 1 ? 'day' : 'days'}. Move each payment's share into a separate savings pot as it lands, and it's never a scary bill.
+          </div>
+          <label className="lab" style={{ maxWidth: 280 }}>
+            Share to set aside
+            <select className="field" value={pct} onChange={(e) => setPct(Number(e.target.value))}>
+              {(TAX_PERCENTS.includes(pct) ? TAX_PERCENTS : [...TAX_PERCENTS, pct].sort((a, b) => a - b)).map((n) => <option key={n} value={n}>{n}%</option>)}
+            </select>
+          </label>
+          <div className="faint small">About 20–25% suits most basic-rate sole traders; more if you earn over £50,270. A rough guide, not tax advice.</div>
+        </div>
+      </div>
+
+      {waiting.length > 0 && (
+        <div className="section">
+          <div className="row-head"><h2>Waiting to be paid</h2><span className="faint small">{money(waitingTotal)}</span></div>
+          <div className="hairs">
+            {waiting.map((p) => {
+              const due = invoiceDue(p, today)!
+              return (
+                <div key={p.id} className="item">
+                  <span className="dot" style={{ background: p.color }} />
+                  <div className="grow">
+                    <div className="title">{p.name}</div>
+                    <div className={`small ${due.late > 0 ? 'neg' : 'faint'}`}>
+                      {due.late > 0 ? `${due.late} ${due.late === 1 ? 'day' : 'days'} late. A friendly chase is fair.` : due.due === today ? 'Due today' : `Due ${smallDate(due.due)}`}
+                    </div>
+                  </div>
+                  <span className="num">{money(p.pay)}</span>
+                  <button className="btn quiet small" onClick={() => { update((d) => markPaid(d, p.id)); toast(`Paid. Keep ${money(Math.round(p.pay * pct / 100))} aside for tax.`) }}>Paid</button>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {sum.categories.length > 0 && (
         <div className="section">
@@ -124,9 +193,9 @@ export function Money() {
         )}
       </div>
 
-      {booked > 0 && (
+      {unbilled > 0 && (
         <div className="section">
-          <div className="notice ok">Your projects are booked at {money(booked)} in total. Record each payment above when it lands. (Automatic income is coming later.)</div>
+          <div className="notice ok">{money(unbilled)} of project fees not invoiced yet. When you send one, tap “Invoice sent” on the Work page, and payments land here on their own.</div>
         </div>
       )}
 

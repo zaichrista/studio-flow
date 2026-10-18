@@ -40,6 +40,9 @@ Rules:
 - "dueDate" is an ISO date (YYYY-MM-DD). Resolve words like "Friday" or "next week" against today's date. Only set it if the text gives a deadline.
 - "daysToComplete" is a number of working days, only if the text says e.g. "give me 5 days for this".
 - Anything that is not client or design work and is not a purchase goes in "loose".
+- "firstStep" is the smallest concrete action that starts a task, under 8 words (e.g. "Open the Maya Figma file"). Take it from the user's words or the first subtask; leave it out if nothing obvious fits.
+- "kind" is "focus" (making the actual work), "ideas" (brainstorming, moodboards, concepts, sketching, exploring) or "admin" (emails, invoices, calls, booking, sending). Always set it.
+- Ideas, musings, "what if…" thoughts, inspiration and things to remember that are not actions go in "ideas", in the user's own words. Put them on the project they belong to, or in the top-level "ideas" if they belong to none. Never turn an idea into a task.
 - Money the designer spent or must spend (software, supplies, bills) goes in "expenses" with an amount in pounds; leave out amounts you cannot read.
 - Never invent tasks, amounts or dates. Keep the user's own wording for titles, tidied lightly.
 - Put anything you could not place in "notes" as one short sentence.`
@@ -65,10 +68,13 @@ const SORT_SCHEMA = {
                 estimateMinutes: { type: 'number' },
                 dueDate: { type: 'string' },
                 daysToComplete: { type: 'number' },
+                firstStep: { type: 'string' },
+                kind: { type: 'string', enum: ['focus', 'ideas', 'admin'] },
               },
               required: ['title'],
             },
           },
+          ideas: { type: 'array', items: { type: 'string' } },
         },
         required: ['name', 'tasks'],
       },
@@ -83,10 +89,13 @@ const SORT_SCHEMA = {
           estimateMinutes: { type: 'number' },
           dueDate: { type: 'string' },
           daysToComplete: { type: 'number' },
+          firstStep: { type: 'string' },
+          kind: { type: 'string', enum: ['focus', 'ideas', 'admin'] },
         },
         required: ['title'],
       },
     },
+    ideas: { type: 'array', items: { type: 'string' } },
     expenses: {
       type: 'array',
       items: {
@@ -249,10 +258,12 @@ async function sendDue(env: Env): Promise<void> {
       await indexRemove(env, name)
       continue
     }
-    // Block reminders go out up to one tick early so they never arrive late.
-    // Anything else (e.g. "your hour is up") is only sent once it is really due.
+    // Nudges about what's coming (a block, its heads-up, the end of the day)
+    // go out up to one tick early so they never arrive late. Anything else
+    // (e.g. "your hour is up") is only sent once it is really due.
     const ahead = (Number(env.TICK_MINUTES) || 0) * 60_000
-    const isDue = (r: Reminder) => r.at <= now + (r.id.startsWith('block:') ? ahead : 0)
+    const early = (r: Reminder) => /^(block|soon|shutdown):/.test(r.id)
+    const isDue = (r: Reminder) => r.at <= now + (early(r) ? ahead : 0)
     const due = stored.reminders.filter(isDue)
     if (due.length === 0) continue
     const keep = stored.reminders.filter((r) => !isDue(r))

@@ -17,7 +17,19 @@ export const IconPlay = make(<path d="M8 6.5v11l9-5.5Z" fill="currentColor" />)
 export const IconClose = make(<path d="M6 6l12 12M18 6 6 18" />)
 export const IconPlus = make(<path d="M12 5v14M5 12h14" />)
 
-export function Ring() {
+const CIRCLE = 2 * Math.PI * 90
+
+/** The soft ring on the focus card. Given `left` (0–1), it becomes a countdown that empties as time runs. */
+export function Ring({ left }: { left?: number }) {
+  if (left !== undefined) {
+    const arc = Math.max(0, Math.min(1, left)) * CIRCLE
+    return (
+      <svg className="ring countdown" viewBox="0 0 220 220" fill="none" role="img" aria-label={`${Math.round(left * 100)}% of the block left`}>
+        <circle cx="110" cy="110" r="90" stroke="var(--sage)" strokeOpacity=".22" strokeWidth="14" />
+        <circle cx="110" cy="110" r="90" stroke="var(--sage-deep)" strokeWidth="14" strokeLinecap="round" strokeDasharray={`${arc} ${CIRCLE}`} transform="rotate(-90 110 110)" />
+      </svg>
+    )
+  }
   return (
     <svg className="ring" viewBox="0 0 220 220" fill="none" aria-hidden="true">
       <circle cx="110" cy="110" r="90" stroke="currentColor" strokeWidth="14" strokeLinecap="round" strokeDasharray="520 60" color="var(--sage)" />

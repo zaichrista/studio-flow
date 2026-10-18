@@ -1,8 +1,10 @@
-import type { AppData } from '../types'
+import type { AppData, Task } from '../types'
 import { getVapidKey, sendTestPush, syncReminders } from './api'
 import type { Reminder } from './api'
 import { blockStart } from './actions'
-import { fmtDuration } from './dates'
+import { addDays, iso, smallDate, stamp } from './dates'
+import { workDates } from './scheduler'
+import { awaitingPayment, invoiceDue, money, nextTaxDay } from './stats'
 
 const SUB_KEY = 'studio-flow:push'
 
@@ -67,35 +69,101 @@ export async function testPush(data: AppData): Promise<void> {
   await sendTestPush(data.settings, json)
 }
 
+/** What to do first when a block begins: where you left off, the first step, or the next subtask. */
+export function startHint(task: Task): string | null {
+  if (task.resumeNote?.trim()) return `Pick up from: ${task.resumeNote.trim()}`
+  if (task.firstStep?.trim()) return `Start by: ${task.firstStep.trim()}`
+  const next = task.subtasks.find((x) => !x.done)
+  return next ? `Start by: ${next.title}` : null
+}
+
+/** A morning time on the first work day on or after `date`, so money nudges stay in work hours. */
+function workMorning(d: AppData, date: string): number {
+  const day = workDates(date, 1, d.settings)[0] ?? date
+  return stamp(day, '10:00')
+}
+
 /** Everything the worker should nudge about, with the exact time to send it. */
 export function buildReminders(d: AppData, now = Date.now()): Reminder[] {
-  const lead = d.settings.notifyLeadMinutes * 60_000
+  const s = d.settings
+  const lead = s.headsUpMinutes * 60_000
+  const today = iso(new Date(now))
   const out: Reminder[] = []
+  const add = (r: Reminder) => r.at >= now && out.push(r)
+
   for (const b of d.blocks) {
-    if (!b.date || b.done) continue
+    if (!b.date || b.done || b.date === d.closedOn) continue
     const task = d.tasks.find((t) => t.id === b.taskId)
     if (!task) continue
     const start = blockStart(b)
-    const at = start - lead
-    if (at < now) continue
-    out.push({
+    const hint = startHint(task)
+    if (lead > 0) {
+      add({
+        id: `soon:${b.id}`,
+        at: start - lead,
+        title: `In ${s.headsUpMinutes} minutes: ${task.title}`,
+        body: hint ? `Finish the thought you're on. ${hint}` : "Finish the thought you're on, get some water.",
+      })
+    }
+    add({
       id: `block:${b.id}`,
-      at,
-      title: `Coming up at ${b.start}`,
-      body: `${task.title} · ${fmtDuration(b.minutes * 60)}`,
+      at: start,
+      title: `Time for ${task.title}`,
+      body: `${hint ? `${hint}. ` : ''}Tap to start the timer.`,
     })
   }
+
   const a = d.active
+  if (a?.trial) {
+    add({
+      id: 'trial',
+      at: a.startedAt + a.trial * 60_000,
+      title: `That's ${a.trial} minutes.`,
+      body: "Keep going if it's flowing. Stopping here counts too.",
+    })
+  }
   if (a?.blockId) {
     const b = d.blocks.find((x) => x.id === a.blockId)
     const task = d.tasks.find((t) => t.id === a.taskId)
     if (b && task) {
       const at = a.startedAt + Math.max(0, b.minutes * 60 - b.loggedSeconds) * 1000
-      if (at > now) {
-        out.push({ id: 'timer', at, title: 'Block complete', body: `${task.title} — that's your hour. Stop the timer when you're ready.` })
+      if (s.wrapUpMinutes > 0) {
+        add({
+          id: 'wrap',
+          at: at - s.wrapUpMinutes * 60_000,
+          title: `${s.wrapUpMinutes} minutes left`,
+          body: `${task.title}. Jot down where you're up to, so it's easy to pick back up.`,
+        })
       }
+      add({ id: 'timer', at, title: 'Block complete', body: `${task.title}. That's your time. Stop when you're ready, then step away for a bit.` })
     }
   }
+
+  if (s.shutdownNudge) {
+    for (const day of workDates(today, 7, s)) {
+      if (day === d.closedOn) continue
+      add({ id: `shutdown:${day}`, at: stamp(day, s.dayEnd), title: "That's the day.", body: 'Two minutes to put work away, then the evening is yours.' })
+    }
+  }
+
+  for (const p of awaitingPayment(d)) {
+    const due = invoiceDue(p, today)
+    if (!due) continue
+    const amount = p.pay > 0 ? `${money(p.pay)}. ` : ''
+    add({ id: `inv:${p.id}:due`, at: workMorning(d, due.due), title: `${p.name}: invoice due today`, body: `${amount}If it hasn't landed, a friendly nudge is fine.` })
+    add({ id: `inv:${p.id}:late`, at: workMorning(d, addDays(due.due, 7)), title: `${p.name} is a week late paying`, body: `${amount}Time to chase. You did the work.` })
+  }
+
+  const taxDay = nextTaxDay(today)
+  for (const before of [30, 7]) {
+    add({
+      id: `tax:${taxDay}:${before}`,
+      at: workMorning(d, addDays(taxDay, -before)),
+      title: `Tax day is ${smallDate(taxDay)}`,
+      body: `${before} days to go. Your tax pot is on the Money page.`,
+    })
+  }
+
   return out.sort((x, y) => x.at - y.at).slice(0, 200)
 }
 

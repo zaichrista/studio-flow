@@ -1,7 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
-import { IconBoard, IconChevronDown, IconChevronLeft, IconDump, IconGear, IconMoney, IconToday, IconWeek, IconWork, Mark } from './components/Icons'
-import { Toaster } from './components/Toast'
+import { IconBoard, IconChevronDown, IconChevronLeft, IconDump, IconGear, IconMoney, IconPlus, IconToday, IconWeek, IconWork, Mark } from './components/Icons'
+import { openCapture, QuickCapture } from './components/QuickCapture'
+import { ResumePrompt } from './components/ResumePrompt'
+import { requestShutdown } from './components/Shutdown'
+import { toast, Toaster } from './components/Toast'
+import { startTimer } from './lib/actions'
+import { ThemeToggle } from './components/ThemeToggle'
 import { TimerDock } from './components/TimerDock'
 import { syncIfEnabled } from './lib/push'
 import { useStore } from './lib/store'
@@ -27,9 +32,29 @@ const NAV: { id: PageId; label: string; icon: () => ReactElement }[] = [
 
 const PAGE_KEY = 'studio-flow:page'
 const MENU_KEY = 'studio-flow:menu'
+const SEEN_KEY = 'studio-flow:seen'
+/** Away longer than this and the app opens on Today, where the next thing is. */
+const AWAY_MS = 60 * 60_000
+
+const awayLong = () => {
+  try {
+    return Date.now() - Number(localStorage.getItem(SEEN_KEY) ?? 0) > AWAY_MS
+  } catch {
+    return false
+  }
+}
+
+const markSeen = () => {
+  try {
+    localStorage.setItem(SEEN_KEY, String(Date.now()))
+  } catch {
+    /* ignore */
+  }
+}
 
 function initialPage(): PageId {
   try {
+    if (awayLong() || new URLSearchParams(location.search).has('n')) return 'today'
     const saved = localStorage.getItem(PAGE_KEY) as PageId | null
     if (saved && NAV.some((n) => n.id === saved)) return saved
   } catch {
@@ -51,21 +76,24 @@ function useMedia(query: string): boolean {
 }
 
 export default function App() {
-  const { data } = useStore()
+  const { data, update } = useStore()
   const wide = useMedia('(min-width: 1000px)')
   const look = data.settings.look
   const mode = look.nav === 'auto' ? (wide ? 'rail' : 'bar') : look.nav
   const myName = data.settings.name.trim()
 
-  // The palette lives on <html> so the whole page, and the browser chrome, follows it.
+  // Palette and light/dark live on <html> so the whole page, and the browser chrome, follow them.
+  const dark = useMedia('(prefers-color-scheme: dark)')
+  const theme = look.theme === 'auto' ? (dark ? 'dark' : 'light') : look.theme
   useEffect(() => {
     document.documentElement.dataset.palette = look.palette
+    document.documentElement.dataset.theme = theme
     const id = requestAnimationFrame(() => {
       const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim()
       if (bg) document.querySelectorAll('meta[name="theme-color"]').forEach((m) => m.setAttribute('content', bg))
     })
     return () => cancelAnimationFrame(id)
-  }, [look.palette])
+  }, [look.palette, theme])
   const [page, setPage] = useState<PageId>(initialPage)
   const [menuOpen, setMenuOpen] = useState(() => {
     try {
@@ -94,11 +122,62 @@ export default function App() {
     }
   }
 
+  // Coming back after a while lands on Today.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        if (awayLong()) go('today')
+      }
+      markSeen()
+    }
+    markSeen()
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [])
+
+  // A tapped notification takes you to the thing it was about.
+  const latest = useRef(data)
+  latest.current = data
+  useEffect(() => {
+    const handle = (tag: string) => {
+      const d = latest.current
+      if (tag.startsWith('block:')) {
+        go('today')
+        const block = d.blocks.find((b) => b.id === tag.slice(6))
+        const task = block && d.tasks.find((t) => t.id === block.taskId)
+        if (block && task && !block.done && block.date && !d.active) {
+          update((x) => startTimer(x, task.id, block.id))
+          toast(`Started ${task.title}. Stop any time.`)
+        }
+      } else if (tag.startsWith('shutdown:')) {
+        go('today')
+        requestShutdown()
+      } else if (tag.startsWith('inv:') || tag.startsWith('tax:')) {
+        go('money')
+      } else if (tag) {
+        go('today')
+      }
+    }
+    const params = new URLSearchParams(location.search)
+    const tag = params.get('n')
+    if (tag) {
+      history.replaceState(null, '', location.pathname)
+      // Wait a moment so the stored plan has loaded and re-planned.
+      setTimeout(() => handle(tag), 300)
+    }
+    const onMessage = (e: MessageEvent) => {
+      const t = (e.data as { notification?: string } | null)?.notification
+      if (t) handle(t)
+    }
+    navigator.serviceWorker?.addEventListener('message', onMessage)
+    return () => navigator.serviceWorker?.removeEventListener('message', onMessage)
+  }, [])
+
   // Keep the server's reminder list in step with the calendar.
   useEffect(() => {
     const t = setTimeout(() => syncIfEnabled(data).catch(() => {}), 1500)
     return () => clearTimeout(t)
-  }, [data.blocks, data.tasks, data.active, data.settings])
+  }, [data.blocks, data.tasks, data.active, data.settings, data.projects, data.closedOn])
 
   const view = {
     today: <Today go={go} />,
@@ -111,9 +190,13 @@ export default function App() {
   }[page]
 
   return (
-    <div className={`app ${menuOpen ? '' : 'menu-closed'}`} data-mode={mode} data-density={look.density}>
+    <div className={`app ${menuOpen ? '' : 'menu-closed'}`} data-mode={mode} data-density={look.density} data-surface={look.surface}>
       <aside className="rail">
         <div className="mark">studio<span>.</span>flow</div>
+        <button className="rail-capture" onClick={openCapture}>
+          <IconPlus />
+          Put it down
+        </button>
         <nav aria-label="Main">
           {NAV.map(({ id, label, icon: Icon }) => (
             <button key={id} className={`navbtn ${page === id ? 'on' : ''}`} onClick={() => go(id)}>
@@ -150,6 +233,9 @@ export default function App() {
         <Mark />
       </button>
       <TimerDock hidden={page === 'today'} />
+      <ThemeToggle theme={theme} />
+      <QuickCapture hidden={page === 'dump'} />
+      <ResumePrompt />
       <Toaster />
     </div>
   )

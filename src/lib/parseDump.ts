@@ -11,6 +11,7 @@ import { addDays, iso } from './dates'
  *       collect references    indented lines are subtasks of the task above
  *   Maya: send invoice       "Project: task" on one line
  *   Buy brushes £12          money plus a spending word = an expense
+ *   idea: a risograph zine   "idea:", "what if…", "💡" keep a thought, not a task
  *   Reply to emails          anything else is a task
  * A blank line ends a project's group.
  */
@@ -29,6 +30,16 @@ const CATEGORIES: [RegExp, string][] = [
 ]
 
 type Item = NonNullable<SortedDump['loose']>[number]
+
+const IDEA_TAG = /^(?:💡|✨|(?:idea|ideas|thought|inspo|inspiration|maybe someday)\s*[:\-–—]\s*)/i
+const IDEA_WONDER = /^(?:what if|i wonder|wouldn'?t it be|how about)\b/i
+
+/** A thought to keep rather than a thing to do, with any tag taken off. */
+function asIdea(line: string): string | null {
+  if (IDEA_TAG.test(line)) return line.replace(IDEA_TAG, '').trim() || null
+  if (IDEA_WONDER.test(line)) return line.trim()
+  return null
+}
 
 function takeMoney(line: string): { rest: string; amount: number | null } {
   const m = line.match(/£\s?(\d[\d,]*(?:\.\d+)?)\s?(k\b)?/i)
@@ -125,7 +136,7 @@ function parseTask(line: string, now: Date): Item {
 const category = (text: string) => CATEGORIES.find(([re]) => re.test(text))?.[1] ?? 'Other'
 
 export function parseDump(text: string, now: Date = new Date()): SortedDump {
-  const out: SortedDump = { projects: [], loose: [], expenses: [] }
+  const out: SortedDump = { projects: [], loose: [], expenses: [], ideas: [] }
   const byName = new Map<string, SortedDump['projects'][number]>()
 
   const project = (name: string, pay?: number) => {
@@ -153,6 +164,14 @@ export function parseDump(text: string, now: Date = new Date()): SortedDump {
     }
     const indent = raw.match(/^[ \t]*/)![0].replace(/\t/g, '  ').length
     const line = raw.trim().replace(/^[-•*–]\s+/, '').replace(/^\d+[.)]\s+/, '')
+
+    // Ideas are kept, never scheduled. Under a project they belong to it.
+    const idea = asIdea(line)
+    if (idea) {
+      if (current) current.ideas = [...(current.ideas ?? []), idea]
+      else out.ideas!.push(idea)
+      continue
+    }
 
     // Under a project heading the first indent level holds tasks; deeper
     // lines are subtasks of the task above. With no project, any indent is.
@@ -202,8 +221,9 @@ export function parseDump(text: string, now: Date = new Date()): SortedDump {
     lastTask = task
   }
 
-  out.projects = out.projects.filter((p) => p.tasks.length > 0 || p.pay)
+  out.projects = out.projects.filter((p) => p.tasks.length > 0 || p.pay || p.ideas?.length)
   if (!out.loose!.length) delete out.loose
   if (!out.expenses!.length) delete out.expenses
+  if (!out.ideas!.length) delete out.ideas
   return out
 }

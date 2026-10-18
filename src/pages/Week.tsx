@@ -2,8 +2,8 @@ import { useState } from 'react'
 import { BlockSheet } from '../components/BlockSheet'
 import { EventSheet } from '../components/EventSheet'
 import { Seg, timeLabel } from '../components/Fields'
-import { addDays, dayName, fromMin, iso, longDate, monday, nowMinutes, shortDay, smallDate, toMin, weekday } from '../lib/dates'
-import { eventsOn, isLate } from '../lib/scheduler'
+import { addDays, dayName, fmtDuration, fromMin, iso, longDate, monday, nowMinutes, shortDay, smallDate, toMin, weekday } from '../lib/dates'
+import { eventsOn, isLate, weekLoad } from '../lib/scheduler'
 import { useStore } from '../lib/store'
 import type { AppData, CalEvent, Look } from '../types'
 
@@ -200,6 +200,13 @@ export function Week() {
   const planned = data.blocks.filter((b) => b.date && days.includes(b.date) && !b.done).length
   const waiting = data.blocks.filter((b) => !b.date && !b.done).length
   const label = view === 'day' ? longDate(oneDay) : days.length ? `${smallDate(days[0])} – ${smallDate(days[days.length - 1])}` : ''
+  const cap = data.settings.maxWeekHours * 60
+  const load = weekLoad(view === 'day' ? oneDay : weekStart, data.blocks, data.events)
+  const lateTasks = [...new Set(
+    data.blocks
+      .filter((b) => b.date && days.includes(b.date) && isLate(b, data.tasks.find((t) => t.id === b.taskId)))
+      .map((b) => data.tasks.find((t) => t.id === b.taskId)!.title),
+  )]
   const eyebrow = view === 'day' ? (dayOffset === 0 ? 'Today' : dayOffset === 1 ? 'Tomorrow' : dayOffset === -1 ? 'Yesterday' : 'Day') : offset === 0 ? 'This week' : offset === 1 ? 'Next week' : offset === -1 ? 'Last week' : 'Week'
 
   return (
@@ -209,6 +216,12 @@ export function Week() {
           <div className="eyebrow">{eyebrow}</div>
           <h1>{label}</h1>
           <p className="lede">{planned} {planned === 1 ? 'block' : 'blocks'} planned.{waiting > 0 && ` ${waiting} waiting for a free slot.`}</p>
+          {cap > 0 && (
+            <div className="load">
+              <div className="bar"><i className={load > cap ? 'over' : ''} style={{ width: `${Math.min(100, (load / cap) * 100)}%` }} /></div>
+              <div className="faint small">{fmtDuration(load * 60)} of your {data.settings.maxWeekHours}h week booked{load >= cap ? '. Full; new work waits for next week.' : '.'}</div>
+            </div>
+          )}
         </div>
         <div className="row" style={{ flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           <Seg label="Calendar layout" value={view} options={[['grid', 'Grid'], ['agenda', 'List'], ['day', 'Day']]} onChange={setView} />
@@ -220,6 +233,13 @@ export function Week() {
           <button className="btn small" onClick={() => setEventSheet({ date: view === 'day' ? oneDay : today })}>Add event</button>
         </div>
       </div>
+
+      {lateTasks.length > 0 && (
+        <div className="notice" style={{ marginBottom: 24 }}>
+          {lateTasks.length === 1 ? <><b>{lateTasks[0]}</b> won't make its deadline.</> : <><b>{lateTasks.slice(0, -1).join(', ')}</b> and <b>{lateTasks[lateTasks.length - 1]}</b> won't make their deadlines.</>}{' '}
+          Too much is landing at once. Give one of them more days, or let something go. Both are fine.
+        </div>
+      )}
 
       {days.length === 0 ? (
         <div className="empty"><b>No work days chosen</b>Pick them in Settings, or add an event.</div>
