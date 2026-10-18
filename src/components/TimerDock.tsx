@@ -17,7 +17,7 @@ export function useStopTimer() {
     if (!block) return toast('Time saved.')
     const logged = Math.floor(total / 60)
     if (logged < block.minutes) toast(`Logged ${logged} of ${block.minutes} min. The rest is back on your calendar.`)
-    else toast('Block complete. Well done.')
+    else toast(data.settings.name ? `Block complete. Well done, ${data.settings.name}.` : 'Block complete. Well done.')
   }, [data, update])
 }
 

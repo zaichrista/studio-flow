@@ -7,6 +7,8 @@ const STEP = 15
 const OVERFLOW_DAYS = 60
 
 export const DEFAULT_SETTINGS: Settings = {
+  name: '',
+  pronouns: '',
   workDays: [1, 2, 3, 4, 5],
   dayStart: '09:00',
   dayEnd: '17:00',

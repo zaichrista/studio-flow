@@ -436,3 +436,10 @@ label.lab { display: grid; gap: 6px; font-size: 13px; color: var(--ink-soft); }
   .page.today-split .today-side .section:first-child { margin-top: 0; }
 }
 .kboard.stacked { grid-auto-flow: row; grid-auto-columns: unset; grid-template-columns: minmax(0, 720px); overflow: visible; margin: 0 auto; }
+
+/* ---------- about you ---------- */
+.me { display: flex; align-items: center; gap: 12px; padding: 10px 14px; margin-bottom: 8px; border-radius: 20px; background: color-mix(in srgb, var(--raised) 70%, transparent); }
+.me .avatar { width: 34px; height: 34px; border-radius: 50%; flex: none; display: grid; place-items: center; background: var(--clay-wash); color: var(--warn); font: 400 16px var(--serif); }
+.me .who { display: grid; line-height: 1.25; min-width: 0; }
+.me .who b { font-weight: 500; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.me .who span { font-size: 12px; color: var(--ink-faint); }

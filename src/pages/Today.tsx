@@ -12,9 +12,10 @@ import { useNow, useStore } from '../lib/store'
 import type { CalEvent } from '../types'
 import type { PageId } from '../App'
 
-const greeting = () => {
+const greeting = (name: string) => {
   const h = new Date().getHours()
-  return h < 12 ? 'Good morning.' : h < 18 ? 'Good afternoon.' : 'Good evening.'
+  const hello = h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'
+  return name ? `${hello}, ${name}.` : `${hello}.`
 }
 
 export function Today({ go }: { go: (p: PageId) => void }) {
@@ -52,7 +53,7 @@ export function Today({ go }: { go: (p: PageId) => void }) {
       <div className="head">
         <div>
           <div className="eyebrow">{longDate(today)}</div>
-          <h1>{greeting()}</h1>
+          <h1>{greeting(data.settings.name)}</h1>
           <p className="lede">
             {todays.filter((b) => !b.done).length > 0
               ? `${todays.filter((b) => !b.done).length} blocks on your calendar today. One at a time.${todaysEvents.length ? ` Plus ${todaysEvents.length} fixed ${todaysEvents.length === 1 ? 'event' : 'events'}.` : ''}`

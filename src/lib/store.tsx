@@ -6,30 +6,33 @@ import { DEFAULT_SETTINGS } from './scheduler'
 
 const KEY = 'studio-flow:v2'
 
+/** Bring a save or backup from any earlier version up to the current shape. */
+export function upgrade(parsed: AppData): AppData {
+  const saved = (parsed.settings ?? {}) as Partial<Settings> & { lunchStart?: string; lunchMinutes?: number }
+  // Older saves had a single lunch; it becomes the first break, and dinner is added.
+  const breaks =
+    saved.breaks ??
+    DEFAULT_SETTINGS.breaks.map((b) =>
+      b.id === 'lunch' && saved.lunchStart
+        ? { ...b, start: saved.lunchStart, minutes: saved.lunchMinutes ?? b.minutes }
+        : b,
+    )
+  const { lunchStart: _a, lunchMinutes: _b, ...rest } = saved
+  void _a
+  void _b
+  return {
+    ...emptyData(),
+    ...parsed,
+    settings: { ...DEFAULT_SETTINGS, ...rest, breaks, look: { ...DEFAULT_SETTINGS.look, ...saved.look } },
+  }
+}
+
 function load(): AppData {
   try {
     const raw = localStorage.getItem(KEY)
     if (raw) {
       const parsed = JSON.parse(raw) as AppData
-      if (parsed.version === 1) {
-        const saved = parsed.settings as Partial<Settings> & { lunchStart?: string; lunchMinutes?: number }
-        // Older saves had a single lunch; it becomes the first break, and dinner is added.
-        const breaks =
-          saved.breaks ??
-          DEFAULT_SETTINGS.breaks.map((b) =>
-            b.id === 'lunch' && saved.lunchStart
-              ? { ...b, start: saved.lunchStart, minutes: saved.lunchMinutes ?? b.minutes }
-              : b,
-          )
-        const { lunchStart: _a, lunchMinutes: _b, ...rest } = saved
-        void _a
-        void _b
-        return {
-          ...emptyData(),
-          ...parsed,
-          settings: { ...DEFAULT_SETTINGS, ...rest, breaks, look: { ...DEFAULT_SETTINGS.look, ...saved.look } },
-        }
-      }
+      if (parsed.version === 1) return upgrade(parsed)
     }
   } catch {
     /* corrupt or blocked storage: start fresh */
@@ -79,7 +82,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const update = useCallback((fn: (d: AppData) => AppData) => setData((d) => fn(d)), [])
-  const replaceAll = useCallback((d: AppData) => setData(replan({ ...emptyData(), ...d })), [])
+  const replaceAll = useCallback((d: AppData) => setData(replan(upgrade(d))), [])
   const value = useMemo(() => ({ data, update, replaceAll }), [data, update, replaceAll])
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }
