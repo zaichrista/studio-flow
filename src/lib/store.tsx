@@ -8,7 +8,7 @@ const KEY = 'studio-flow:v2'
 
 /** Bring a save or backup from any earlier version up to the current shape. */
 export function upgrade(parsed: AppData): AppData {
-  const saved = (parsed.settings ?? {}) as Partial<Settings> & { lunchStart?: string; lunchMinutes?: number }
+  const saved = (parsed.settings ?? {}) as Partial<Settings> & { lunchStart?: string; lunchMinutes?: number; pronouns?: string }
   // Older saves had a single lunch; it becomes the first break, and dinner is added.
   const breaks =
     saved.breaks ??
@@ -17,9 +17,11 @@ export function upgrade(parsed: AppData): AppData {
         ? { ...b, start: saved.lunchStart, minutes: saved.lunchMinutes ?? b.minutes }
         : b,
     )
-  const { lunchStart: _a, lunchMinutes: _b, ...rest } = saved
+  // Removed settings from earlier versions are dropped rather than carried along.
+  const { lunchStart: _a, lunchMinutes: _b, pronouns: _c, ...rest } = saved
   void _a
   void _b
+  void _c
   return {
     ...emptyData(),
     ...parsed,

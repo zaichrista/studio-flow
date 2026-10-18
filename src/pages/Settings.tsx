@@ -21,7 +21,6 @@ const PUSH_COPY: Record<PushState, string> = {
   on: 'On. You will be nudged before each block, and when a timed hour is up.',
 }
 
-const PRONOUNS = ['she/her', 'he/him', 'they/them', 'she/they', 'he/they', 'any pronouns']
 const BLOCK_MINUTES = [30, 45, 60, 90, 120]
 const BREAK_MINUTES = [15, 30, 45, 60, 90, 120]
 const LEAD_MINUTES = [0, 5, 10, 15, 30]
@@ -91,7 +90,6 @@ export function Settings() {
   const s = data.settings
   const [push, setPush] = useState<PushState>(pushState)
   const [busy, setBusy] = useState(false)
-  const [customPronouns, setCustomPronouns] = useState(() => !!s.pronouns && !PRONOUNS.includes(s.pronouns))
   const file = useRef<HTMLInputElement>(null)
 
   const set = (patch: Partial<S>, replanAfter = false) =>
@@ -154,36 +152,11 @@ export function Settings() {
       <div className="stack" style={{ gap: 32 }}>
         <section className="card">
           <h2 style={{ marginBottom: 6 }}>About you</h2>
-          <p className="soft small" style={{ marginTop: 0 }}>How the app addresses you. Both are optional, and stay on this iPad.</p>
-          <div className="lab-row">
-            <label className="lab">
-              Your name
-              <input className="field" value={s.name} maxLength={30} autoComplete="given-name" placeholder="What should I call you?" onChange={(e) => set({ name: e.target.value })} />
-            </label>
-            <Pick
-              name="Your pronouns"
-              value={customPronouns ? 'custom' : s.pronouns}
-              onChange={(v) => {
-                if (v === 'custom') {
-                  setCustomPronouns(true)
-                  set({ pronouns: '' })
-                } else {
-                  setCustomPronouns(false)
-                  set({ pronouns: v })
-                }
-              }}
-            >
-              <option value="">Not shown</option>
-              {PRONOUNS.map((p) => <option key={p} value={p}>{p}</option>)}
-              <option value="custom">Something else…</option>
-            </Pick>
-          </div>
-          {customPronouns && (
-            <label className="lab" style={{ marginTop: 14 }}>
-              In your own words
-              <input className="field" value={s.pronouns} maxLength={24} placeholder="e.g. xe/xem" onChange={(e) => set({ pronouns: e.target.value })} autoFocus />
-            </label>
-          )}
+          <p className="soft small" style={{ marginTop: 0 }}>What the app calls you. Optional, and it stays on this iPad.</p>
+          <label className="lab">
+            Your name
+            <input className="field" value={s.name} maxLength={30} autoComplete="given-name" placeholder="What should I call you?" onChange={(e) => set({ name: e.target.value })} />
+          </label>
         </section>
 
         <section className="card">

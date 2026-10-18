@@ -56,7 +56,6 @@ export default function App() {
   const look = data.settings.look
   const mode = look.nav === 'auto' ? (wide ? 'rail' : 'bar') : look.nav
   const myName = data.settings.name.trim()
-  const myPronouns = data.settings.pronouns.trim()
 
   // The palette lives on <html> so the whole page, and the browser chrome, follows it.
   useEffect(() => {
@@ -124,13 +123,10 @@ export default function App() {
           ))}
         </nav>
         <div className="spacer" />
-        {(myName || myPronouns) && (
+        {myName && (
           <div className="me">
-            <span className="avatar" aria-hidden="true">{(myName || myPronouns).charAt(0).toUpperCase()}</span>
-            <span className="who">
-              {myName && <b>{myName}</b>}
-              {myPronouns && <span>{myPronouns}</span>}
-            </span>
+            <span className="avatar" aria-hidden="true">{myName.charAt(0).toUpperCase()}</span>
+            <span className="who"><b>{myName}</b></span>
           </div>
         )}
         <button className="hide-menu" onClick={() => showMenu(false)} aria-label="Hide menu">

@@ -19,8 +19,6 @@ export interface Look {
 export interface Settings {
   /** What the app calls you; blank means it just says hello */
   name: string
-  /** Shown beside your name; blank means not shown */
-  pronouns: string
   /** 0 = Sunday … 6 = Saturday */
   workDays: number[]
   dayStart: string
