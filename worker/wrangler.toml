@@ -5,7 +5,7 @@ compatibility_date = "2026-10-01"
 [vars]
 # Your GitHub Pages origin (no path, no trailing slash), e.g. https://zaira.github.io
 ALLOWED_ORIGIN = "https://zaichrista.github.io"
-VAPID_SUBJECT = "mailto:zcbarakat@gmail.com"
+VAPID_SUBJECT = "https://zaichrista.github.io/studio-flow/"
 MODEL = "claude-sonnet-5-5"
 # How often the worker wakes to send reminders. Change both together.
 TICK_MINUTES = "15"
