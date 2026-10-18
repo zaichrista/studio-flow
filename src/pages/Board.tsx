@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import type { DragEvent } from 'react'
-import { addTask, setStatus, startTimer, statusOf, toggleSubtask } from '../lib/actions'
+import { addTask, setStatus, statusOf, toggleSubtask } from '../lib/actions'
 import type { Status } from '../lib/actions'
 import { iso, smallDate } from '../lib/dates'
 import { taskSeconds } from '../lib/stats'
 import { fmtDuration } from '../lib/dates'
 import { Seg } from '../components/Fields'
+import { useStart } from '../components/RestGuard'
 import { useStore } from '../lib/store'
 import type { Task } from '../types'
 
@@ -25,6 +26,7 @@ function Card({ task, status }: { task: Task; status: Status }) {
   const prev = COLUMNS[idx - 1]
   const next = COLUMNS[idx + 1]
   const running = data.active?.taskId === task.id
+  const begin = useStart()
 
   const onDragStart = (e: DragEvent) => {
     e.dataTransfer.setData('text/plain', task.id)
@@ -64,7 +66,7 @@ function Card({ task, status }: { task: Task; status: Status }) {
 
       <div className="kmove">
         {prev ? <button onClick={() => update((d) => setStatus(d, task.id, prev.id))}>← {prev.title}</button> : <span />}
-        {status === 'todo' && <button className="go" onClick={() => update((d) => startTimer(d, task.id))}>Start</button>}
+        {status === 'todo' && <button className="go" onClick={() => begin(task.id)}>Start</button>}
         {next ? <button onClick={() => update((d) => setStatus(d, task.id, next.id))}>{next.title} →</button> : <span />}
       </div>
     </article>

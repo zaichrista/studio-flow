@@ -4,13 +4,14 @@ import { EventSheet } from '../components/EventSheet'
 import { Care } from '../components/Care'
 import { DayArc } from '../components/DayArc'
 import { openFocus } from '../components/FocusMode'
+import { useStart } from '../components/RestGuard'
 import { Intention } from '../components/Intention'
 import { eveningsKept, plannedToday, plannedWeek, zenLine } from '../lib/wellbeing'
 import { listenShutdown, ShutdownSheet } from '../components/Shutdown'
 import { winsToday, worthKnowing } from '../lib/today'
 import { Ring } from '../components/Icons'
 import { useStopTimer } from '../components/TimerDock'
-import { reopenDay, startTimer } from '../lib/actions'
+import { reopenDay } from '../lib/actions'
 import { startHint } from '../lib/push'
 import { fmtClock, fmtDuration, iso, longDate, nowMinutes, toMin } from '../lib/dates'
 import { timeLabel } from '../components/Fields'
@@ -44,6 +45,7 @@ export function Today({ go }: { go: (p: PageId) => void }) {
   const { data, update } = useStore()
   const stop = useStopTimer()
   const snooze = useSnooze()
+  const begin = useStart()
   const now = useNow(!!data.active)
   const [open, setOpen] = useState<string | null>(null)
   const [eventOpen, setEventOpen] = useState<CalEvent | null>(null)
@@ -178,7 +180,9 @@ export function Today({ go }: { go: (p: PageId) => void }) {
             ) : activeHint && <div className="hint">{activeHint}</div>}
             {activeBlock && (
               <div className="soft small" style={{ marginBottom: 18 }}>
-                {fmtDuration(Math.max(0, activeBlock.minutes * 60 - activeBlock.loggedSeconds - secs))} left in this block
+                {activeBlock.minutes * 60 - activeBlock.loggedSeconds - secs > 0
+                  ? `${fmtDuration(activeBlock.minutes * 60 - activeBlock.loggedSeconds - secs)} left in this block`
+                  : `${fmtDuration(secs + activeBlock.loggedSeconds - activeBlock.minutes * 60)} over this block. Stop whenever you're ready.`}
               </div>
             )}
             <div className="alts">
@@ -200,9 +204,9 @@ export function Today({ go }: { go: (p: PageId) => void }) {
             </div>
             {nextHint && <div className="hint">{nextHint}</div>}
             <div className="alts">
-              <button className="btn" onClick={() => update((d) => startTimer(d, next.taskId, next.id))}>Begin</button>
-              <button className="btn quiet" onClick={() => { update((d) => startTimer(d, next.taskId, next.id)); openFocus() }}>Focus mode</button>
-              <button className="btn quiet" onClick={() => update((d) => startTimer(d, next.taskId, next.id, new Date(), 10))}>Just 10 minutes</button>
+              <button className="btn" onClick={() => begin(next.taskId, next.id)}>Begin</button>
+              <button className="btn quiet" onClick={() => begin(next.taskId, next.id, undefined, openFocus)}>Focus mode</button>
+              <button className="btn quiet" onClick={() => begin(next.taskId, next.id, 10)}>Just 10 minutes</button>
               <button className="btn ghost small" onClick={() => snooze(next.id)}>Not now</button>
             </div>
           </>

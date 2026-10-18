@@ -2,12 +2,13 @@ import { useState } from 'react'
 import { IconClose, IconPlus } from '../components/Icons'
 import { Sheet } from '../components/Sheet'
 import { toast } from '../components/Toast'
-import { addSubtask, addTask, clientNamed, deleteProject, deleteTask, markPaid, patchTask, saveProject, sendInvoice, startTimer, toggleSubtask, toggleTask, unsendInvoice } from '../lib/actions'
+import { addSubtask, addTask, clientNamed, deleteProject, deleteTask, markPaid, patchTask, saveProject, sendInvoice, toggleSubtask, toggleTask, unsendInvoice } from '../lib/actions'
 import { fmtDuration, iso, smallDate } from '../lib/dates'
 import { clientStats, effectiveRate, estimateRatio, invoiceDue, money, projectSeconds, readyToInvoice, taskProgress, taskSeconds } from '../lib/stats'
 import { useStore } from '../lib/store'
 import type { Client, Project, Task, TaskKind } from '../types'
 import { ClientSheet } from '../components/ClientSheet'
+import { useStart } from '../components/RestGuard'
 import { Seg } from '../components/Fields'
 import { ProjectOptions } from '../components/ProjectOptions'
 import { ProjectPick } from '../components/ProjectPick'
@@ -16,6 +17,7 @@ import { kindOf, KIND_LABEL } from '../lib/kind'
 
 function TaskRow({ task }: { task: Task }) {
   const { data, update } = useStore()
+  const begin = useStart()
   const [open, setOpen] = useState(false)
   const [draft, setDraft] = useState('')
   const blocks = data.blocks.filter((b) => b.taskId === task.id && !b.done).length
@@ -38,7 +40,7 @@ function TaskRow({ task }: { task: Task }) {
         </button>
         {taskProgress(task) > 0 && !task.done && <span className="chip">{Math.round(taskProgress(task) * 100)}%</span>}
         {!task.done && (
-          <button className="icon-btn" aria-label="Start timer" onClick={() => update((d) => startTimer(d, task.id))}>▶</button>
+          <button className="icon-btn" aria-label="Start timer" onClick={() => begin(task.id)}>▶</button>
         )}
       </div>
       {open && (

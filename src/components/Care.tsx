@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { toggleCare } from '../lib/actions'
-import { fmtDuration, iso } from '../lib/dates'
+import { fmtDuration, iso, toMin } from '../lib/dates'
 import { useNow, useStore } from '../lib/store'
 import { CARE, focusRun } from '../lib/wellbeing'
 import { Sheet } from './Sheet'
@@ -49,8 +49,10 @@ export function Care() {
   const run = focusRun(data, now)
   const all = CARE.every((c) => done.includes(c.key))
 
-  const message =
-    run >= 75
+  const late = !!data.active && new Date(now).getHours() * 60 + new Date(now).getMinutes() > toMin(data.settings.dayEnd)
+  const message = late
+    ? 'You\u2019re working late. Finish the thought, then let yourself rest.'
+    : run >= 75
       ? `You've been focused for ${fmtDuration(run * 60)}. A pause now makes the next hour easier.`
       : data.active
         ? 'In the flow. Remember to blink.'

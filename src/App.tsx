@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
 import { IconBoard, IconChevronDown, IconChevronLeft, IconDump, IconGear, IconMoney, IconPlus, IconToday, IconWeek, IconWork, Mark } from './components/Icons'
-import { FocusMode } from './components/FocusMode'
+import { FocusMode, openFocus } from './components/FocusMode'
+import { RestGuard } from './components/RestGuard'
 import { openCapture, QuickCapture } from './components/QuickCapture'
 import { ResumePrompt } from './components/ResumePrompt'
 import { requestShutdown } from './components/Shutdown'
@@ -153,6 +154,9 @@ export default function App() {
       } else if (tag.startsWith('shutdown:')) {
         go('today')
         requestShutdown()
+      } else if (tag === 'focus' || tag === 'trial') {
+        go('today')
+        if (d.active) openFocus()
       } else if (tag.startsWith('inv:') || tag.startsWith('tax:')) {
         go('money')
       } else if (tag) {
@@ -237,6 +241,7 @@ export default function App() {
       <ThemeToggle theme={theme} />
       <QuickCapture hidden={page === 'dump'} />
       <FocusMode />
+      <RestGuard />
       <ResumePrompt />
       <Toaster />
     </div>

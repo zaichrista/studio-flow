@@ -37,6 +37,8 @@ export interface Settings {
   maxWeekHours: number
   /** Heads-up before a block starts; 0 = only the nudge at the start */
   headsUpMinutes: number
+  /** While timing, a focus notification that refreshes every this many minutes; 0 = off */
+  progressMinutes: number
   /** Nudge this long before a timed block ends, to note where you're up to; 0 = off */
   wrapUpMinutes: number
   /** A nudge at the end of the work day to put work away */

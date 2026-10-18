@@ -1,9 +1,10 @@
 import { useCallback } from 'react'
-import { patchTask, snoozeBlock, startTimer } from '../lib/actions'
+import { patchTask, snoozeBlock } from '../lib/actions'
 import { addDays, dayName, fmtDuration, iso, longDate, smallDate } from '../lib/dates'
 import { kindOf, KIND_LABEL } from '../lib/kind'
 import type { TaskKind } from '../types'
 import { Seg } from './Fields'
+import { useStart } from './RestGuard'
 import { ProjectPick } from './ProjectPick'
 import { TaskEdit } from './TaskEdit'
 import { remainingMinutes } from '../lib/scheduler'
@@ -35,6 +36,7 @@ export function BlockSheet({ blockId, onClose }: { blockId: string; onClose: () 
   const { data, update } = useStore()
   const stopRunning = useStopTimer()
   const snooze = useSnooze()
+  const begin = useStart()
   const block = data.blocks.find((b) => b.id === blockId)
   if (!block) return null
   const task = data.tasks.find((t) => t.id === block.taskId)
@@ -42,8 +44,8 @@ export function BlockSheet({ blockId, onClose }: { blockId: string; onClose: () 
   const running = data.active?.blockId === block.id
 
   const start = () => {
-    update((d) => startTimer(d, block.taskId, block.id))
     onClose()
+    begin(block.taskId, block.id)
   }
   const stop = () => {
     stopRunning()

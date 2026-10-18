@@ -61,6 +61,8 @@ self.addEventListener('push', (event) => {
     self.registration.showNotification(data.title, {
       body: data.body,
       tag: data.tag,
+      // A refreshed focus notification replaces the last one quietly.
+      renotify: data.tag !== 'focus',
       icon: 'icon-192.png',
       badge: 'icon-192.png',
     }),

@@ -6,6 +6,8 @@ export interface Reminder {
   at: number
   title: string
   body: string
+  /** Notifications with the same tag replace each other instead of piling up */
+  tag?: string
 }
 
 export class ApiError extends Error {}

@@ -22,6 +22,7 @@ export const DEFAULT_SETTINGS: Settings = {
   maxWeekHours: 0,
   headsUpMinutes: 10,
   wrapUpMinutes: 5,
+  progressMinutes: 15,
   shutdownNudge: true,
   clearest: 'morning',
   splash: 'always',

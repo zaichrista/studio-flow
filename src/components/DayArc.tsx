@@ -1,4 +1,4 @@
-import { fmtDuration, iso, nowMinutes, toMin } from '../lib/dates'
+import { fmtDuration, fromMin, iso, nowMinutes, toMin } from '../lib/dates'
 import { eventsOn } from '../lib/scheduler'
 import { useStore } from '../lib/store'
 
@@ -19,8 +19,17 @@ export function DayArc({ closed }: { closed: boolean }) {
   const today = iso()
   const from = toMin(s.dayStart)
   const to = toMin(s.dayEnd)
-  const span = Math.max(1, to - from)
   const now = nowMinutes()
+  // Working late stretches the arc past sunset, so overtime is seen, not hidden.
+  const lateEntries = data.entries
+    .filter((e) => iso(new Date(e.start)) === today)
+    .map((e) => { const d = new Date(e.end); return d.getHours() * 60 + d.getMinutes() })
+    .filter((m) => m > to)
+  const workingLate = !!data.active && now > to
+  const lastLate = Math.max(workingLate ? now : 0, ...lateEntries, 0)
+  const end = lastLate > to ? Math.ceil((lastLate + 20) / 30) * 30 : to
+  const span = Math.max(1, end - from)
+  const tEnd = (to - from) / span
   const t = (m: number) => Math.min(1, Math.max(0, (m - from) / span))
   const pt = (u: number) => [L + (R - L) * u, BASE - H * Math.sin(Math.PI * u)] as const
   const along = (a: number, b: number) => {
@@ -36,11 +45,13 @@ export function DayArc({ closed }: { closed: boolean }) {
   const events = eventsOn(data.events, today)
   const u = (now - from) / span
   const before = u < 0
-  const after = u > 1 || closed
+  const after = (u > 1 || closed) && !workingLate
   const sun = pt(Math.min(1, Math.max(0, u)))
   const leftToday = blocks.filter((b) => !b.done).reduce((a, b) => a + b.minutes, 0)
 
-  const caption = closed
+  const caption = workingLate
+    ? `You\u2019re ${fmtDuration((now - to) * 60)} past your work day. Finish the thought, then rest.`
+    : closed
     ? 'The work day is put away. The rest of the light is yours.'
     : before
       ? `Your work day rises at ${s.dayStart}. No rush yet.`
@@ -82,9 +93,16 @@ export function DayArc({ closed }: { closed: boolean }) {
             <path key={b.id} d={along(a + 0.003, z - 0.003)} className={`bead ${b.done ? 'done' : ''}`} style={{ stroke: colourOf(b.taskId) }} />
           ) : null
         })}
+        {end > to && (
+          <>
+            <path d={along(tEnd, t(Math.min(lastLate, end)))} className="over" />
+            <line x1={pt(tEnd)[0]} x2={pt(tEnd)[0]} y1={pt(tEnd)[1] - 14} y2={pt(tEnd)[1] + 14} className="sunset" />
+            <text x={pt(tEnd)[0]} y={pt(tEnd)[1] - 22} className="lbl mid">{s.dayEnd}</text>
+          </>
+        )}
         <line x1={L - 30} x2={R + 30} y1={BASE} y2={BASE} className="horizon" />
         {!after && (
-          <g className="sun" transform={`translate(${sun[0]} ${before ? BASE + 6 : sun[1]})`}>
+          <g className={`sun ${workingLate ? 'late' : ''}`} transform={`translate(${sun[0]} ${before ? BASE + 6 : sun[1]})`}>
             <circle r="46" fill="url(#arc-sun)" className="glow" />
             <circle r="13" className="disc" />
           </g>
@@ -96,7 +114,7 @@ export function DayArc({ closed }: { closed: boolean }) {
           </g>
         )}
         <text x={L} y={BASE + 30} className="lbl">{s.dayStart}</text>
-        <text x={R} y={BASE + 30} className="lbl end">{s.dayEnd}</text>
+        <text x={R} y={BASE + 30} className="lbl end">{end > to ? fromMin(end) : s.dayEnd}</text>
       </svg>
       <p className="arc-caption">{caption}</p>
     </section>

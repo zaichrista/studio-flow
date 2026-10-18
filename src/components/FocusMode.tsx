@@ -89,7 +89,7 @@ export function FocusMode() {
       <button className="fm-leave" onClick={() => setOpen(false)}>Leave focus mode</button>
 
       <div className="fm-centre">
-        <div className="eyebrow">{over ? 'Time' : 'In focus'}</div>
+        <div className="eyebrow">{over ? 'Overtime' : 'In focus'}</div>
         <div className="fm-ring">
           <svg viewBox="0 0 320 320" aria-hidden="true">
             <circle cx="160" cy="160" r={R} className="bg" />
@@ -98,13 +98,17 @@ export function FocusMode() {
             {up > 0 && <circle cx="160" cy="160" r={R2} className="fg up" strokeDasharray={`${up * C2} ${C2}`} transform="rotate(-90 160 160)" />}
           </svg>
           <div className="fm-time">
-            <div className="t">{over ? 'Done' : mmss(left)}</div>
-            <div className="s">{over ? `${mmss(before + ran)} focused` : <><span className="dot-up" />{mmss(before + ran)} done</>}</div>
+            <div className={`t ${over ? 'over' : ''}`}>{over ? `+${mmss(-left)}` : mmss(left)}</div>
+            <div className="s">{over ? <><span className="dot-up" />{mmss(before + ran)} done · overtime</> : <><span className="dot-up" />{mmss(before + ran)} done</>}</div>
           </div>
         </div>
         <h2 className="fm-task">{task?.title ?? 'Your work'}</h2>
         {over ? (
-          <p className="fm-hint">That's your time. Lovely work. Stand up, look far away, drink some water.</p>
+          <p className="fm-hint">
+            {-left > 20 * 60
+              ? 'You\u2019re well past your time. Stopping now is the kind thing; the work will be here tomorrow.'
+              : 'That\u2019s your time. Lovely work. Stopping here is good; carrying on is allowed. Stand up, look far away, drink some water.'}
+          </p>
         ) : (
           hint && <p className="fm-hint">{hint}</p>
         )}

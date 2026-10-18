@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useEffect } from 'react'
 import { stopTimer } from '../lib/actions'
 import { fmtClock } from '../lib/dates'
 import { activeSeconds } from '../lib/stats'
@@ -28,6 +28,14 @@ export function TimerDock({ hidden }: { hidden: boolean }) {
   const { data } = useStore()
   const now = useNow(!!data.active)
   const stop = useStopTimer()
+  // The tab title carries the countdown while you work, then goes back to normal.
+  const a = data.active
+  const block = a?.blockId ? data.blocks.find((b) => b.id === a.blockId) : undefined
+  const left = a ? (block ? block.minutes * 60 - block.loggedSeconds : (a.trial ?? 60) * 60) - activeSeconds(data, now) : 0
+  const label = a ? `${left >= 0 ? fmtClock(left).replace(/^00:/, '') : `+${fmtClock(-left).replace(/^00:/, '')}`} · ${data.tasks.find((t) => t.id === a.taskId)?.title ?? 'Focus'}` : ''
+  useEffect(() => {
+    document.title = label || 'Studio Flow'
+  }, [label])
   if (!data.active || hidden) return null
   const task = data.tasks.find((t) => t.id === data.active!.taskId)
   return (

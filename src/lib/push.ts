@@ -122,6 +122,31 @@ export function buildReminders(d: AppData, now = Date.now()): Reminder[] {
       body: "Keep going if it's flowing. Stopping here counts too.",
     })
   }
+  // One focus notification that refreshes itself while you work (the nearest
+  // thing to a live timer that web apps on iPad allow).
+  if (a && s.progressMinutes > 0) {
+    const task = d.tasks.find((t) => t.id === a.taskId)
+    const b = a.blockId ? d.blocks.find((x) => x.id === a.blockId) : undefined
+    if (task) {
+      const total = b ? b.minutes : a.trial ?? 60
+      const before = b ? Math.floor(b.loggedSeconds / 60) : 0
+      const step = s.progressMinutes
+      for (let k = 1; k <= 12; k++) {
+        const ran = k * step
+        const left = total - before - ran
+        // The wrap-up and "block complete" nudges already cover the very end.
+        if (Math.abs(left) < 4 || (s.wrapUpMinutes > 0 && Math.abs(left - s.wrapUpMinutes) < 4)) continue
+        if (left < -90) break
+        add({
+          id: `tick:${k}`,
+          tag: 'focus',
+          at: a.startedAt + ran * 60_000,
+          title: left > 0 ? `${task.title} · ${left} min left` : `${task.title} · ${-left} min over`,
+          body: left > 0 ? `${before + ran} min done. Tap for focus mode.` : 'You\u2019ve given it your time. Stop when the thought is finished.',
+        })
+      }
+    }
+  }
   if (a?.blockId) {
     const b = d.blocks.find((x) => x.id === a.blockId)
     const task = d.tasks.find((t) => t.id === a.taskId)
@@ -130,12 +155,13 @@ export function buildReminders(d: AppData, now = Date.now()): Reminder[] {
       if (s.wrapUpMinutes > 0) {
         add({
           id: 'wrap',
+          tag: 'focus',
           at: at - s.wrapUpMinutes * 60_000,
           title: `${s.wrapUpMinutes} minutes left`,
           body: `${task.title}. Jot down where you're up to, so it's easy to pick back up.`,
         })
       }
-      add({ id: 'timer', at, title: 'Block complete', body: `${task.title}. That's your time. Stop when you're ready, then step away for a bit.` })
+      add({ id: 'timer', tag: 'focus', at, title: 'Block complete', body: `${task.title}. That's your time. Stop when you're ready, then step away for a bit.` })
     }
   }
 

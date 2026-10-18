@@ -758,3 +758,11 @@ label.lab { display: grid; gap: 6px; font-size: 13px; color: var(--ink-soft); }
 .fm-hint { margin: 0; color: var(--ink-soft); max-width: 42ch; }
 .fm-zen { position: relative; margin: 0; font: italic 300 17px var(--serif); color: var(--sage-deep); opacity: .85; }
 @media (prefers-reduced-motion: reduce) { .fm-ring::before { animation: none; } }
+
+/* ---------- rest guard ---------- */
+.rest-ask .moon-mark { width: 44px; height: 44px; border-radius: 50%; box-shadow: inset -12px -6px 0 0 #c9c2e6; transform: rotate(-20deg); margin-bottom: 2px; }
+.arc .over { fill: none; stroke: var(--clay); stroke-width: 4; stroke-linecap: round; stroke-dasharray: 2 8; opacity: .85; }
+.arc .sunset { stroke: var(--ink-faint); stroke-width: 1.5; stroke-linecap: round; }
+.arc .lbl.mid { text-anchor: middle; }
+.arc .sun.late .disc { fill: #c9c2e6; }
+.fm-time .t.over { color: var(--clay); font-size: clamp(46px, 10vw, 76px); }

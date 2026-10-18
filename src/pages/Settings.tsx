@@ -285,6 +285,10 @@ export function Settings() {
                 {withCurrent(WRAP_MINUTES, s.wrapUpMinutes).map((m) => <option key={m} value={m}>{m === 0 ? 'Off' : `${m} minutes before the end`}</option>)}
               </Pick>
             </div>
+            <Pick name="Focus notification while timing" value={s.progressMinutes} onChange={(v) => set({ progressMinutes: Number(v) })}>
+              {withCurrent([0, 10, 15, 20, 30], s.progressMinutes).map((m) => <option key={m} value={m}>{m === 0 ? 'Off' : `Refresh every ${m} minutes`}</option>)}
+            </Pick>
+            <div className="faint small">One notification that updates itself with time left and time done, replacing the last one. iPad web apps can't show a live ticking timer outside the app, so this is the closest thing.</div>
             <div>
               <div className="small soft" style={{ marginBottom: 8 }}>End-of-day nudge at {s.dayEnd}</div>
               <Seg label="End-of-day nudge" value={s.shutdownNudge ? 'on' : 'off'} options={[['on', 'On'], ['off', 'Off']]} onChange={(v) => set({ shutdownNudge: v === 'on' })} />

@@ -19,6 +19,8 @@ interface Reminder {
   at: number
   title: string
   body: string
+  /** Same tag = replaces the previous notification instead of stacking */
+  tag?: string
 }
 
 interface Stored {
@@ -232,7 +234,13 @@ async function sync(req: Request, env: Env): Promise<Response> {
   const reminders = (body!.reminders ?? [])
     .filter((r) => typeof r.at === 'number' && typeof r.id === 'string')
     .slice(0, 200)
-    .map((r) => ({ id: r.id, at: r.at, title: String(r.title).slice(0, 80), body: String(r.body).slice(0, 160) }))
+    .map((r) => ({
+      id: r.id,
+      at: r.at,
+      title: String(r.title).slice(0, 80),
+      body: String(r.body).slice(0, 160),
+      ...(typeof r.tag === 'string' ? { tag: r.tag.slice(0, 40) } : {}),
+    }))
   if (reminders.length === 0) {
     await env.REMINDERS.delete(key)
     await indexRemove(env, key)
@@ -271,7 +279,7 @@ async function sendDue(env: Env): Promise<void> {
     for (const r of due) {
       if (now - r.at > STALE_MS) continue
       try {
-        const status = await push(env, stored.subscription, r.title, r.body, r.id)
+        const status = await push(env, stored.subscription, r.title, r.body, r.tag ?? r.id)
         if (status === 404 || status === 410) gone = true
       } catch (err) {
         console.error('push failed', err)
