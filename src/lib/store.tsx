@@ -1,10 +1,31 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import type { AppData, Settings } from '../types'
-import { emptyData, replan } from './actions'
+import type { AppData, Client, Project, Settings } from '../types'
+import { emptyData, PALETTE, replan } from './actions'
+import { uid } from './id'
 import { DEFAULT_SETTINGS } from './scheduler'
 
 const KEY = 'studio-flow:v2'
+
+/** Older saves kept the client as a name on each project; those names become clients. */
+function migrateClients(parsed: AppData): Pick<AppData, 'clients' | 'projects'> {
+  const clients: Client[] = [...(parsed.clients ?? [])]
+  const projects = (parsed.projects ?? []).map((raw) => {
+    const { client: name, ...p } = raw as Project & { client?: string }
+    if (p.clientId !== undefined) return p
+    let clientId: string | null = null
+    if (name?.trim()) {
+      let c = clients.find((x) => x.name.toLowerCase() === name.trim().toLowerCase())
+      if (!c) {
+        c = { id: uid(), name: name.trim(), email: '', notes: '', color: PALETTE[(clients.length + 2) % PALETTE.length] }
+        clients.push(c)
+      }
+      clientId = c.id
+    }
+    return { ...p, clientId }
+  })
+  return { clients, projects }
+}
 
 /** Bring a save or backup from any earlier version up to the current shape. */
 export function upgrade(parsed: AppData): AppData {
@@ -30,9 +51,12 @@ export function upgrade(parsed: AppData): AppData {
   void _b
   void _c
   void _d
+  const { clients, projects } = migrateClients(parsed)
   return {
     ...emptyData(),
     ...parsed,
+    clients,
+    projects,
     ideas: parsed.ideas ?? [],
     days: parsed.days ?? {},
     settings: { ...DEFAULT_SETTINGS, ...rest, headsUpMinutes, breaks, look: { ...DEFAULT_SETTINGS.look, ...saved.look } },

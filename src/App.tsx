@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
 import { IconBoard, IconChevronDown, IconChevronLeft, IconDump, IconGear, IconMoney, IconPlus, IconToday, IconWeek, IconWork, Mark } from './components/Icons'
+import { FocusMode } from './components/FocusMode'
 import { openCapture, QuickCapture } from './components/QuickCapture'
 import { ResumePrompt } from './components/ResumePrompt'
 import { requestShutdown } from './components/Shutdown'
@@ -235,6 +236,7 @@ export default function App() {
       <TimerDock hidden={page === 'today'} />
       <ThemeToggle theme={theme} />
       <QuickCapture hidden={page === 'dump'} />
+      <FocusMode />
       <ResumePrompt />
       <Toaster />
     </div>

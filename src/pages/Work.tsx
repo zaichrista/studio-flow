@@ -2,12 +2,16 @@ import { useState } from 'react'
 import { IconClose, IconPlus } from '../components/Icons'
 import { Sheet } from '../components/Sheet'
 import { toast } from '../components/Toast'
-import { addSubtask, addTask, deleteProject, deleteTask, markPaid, patchTask, saveProject, sendInvoice, startTimer, toggleSubtask, toggleTask, unsendInvoice } from '../lib/actions'
+import { addSubtask, addTask, clientNamed, deleteProject, deleteTask, markPaid, patchTask, saveProject, sendInvoice, startTimer, toggleSubtask, toggleTask, unsendInvoice } from '../lib/actions'
 import { fmtDuration, iso, smallDate } from '../lib/dates'
-import { effectiveRate, estimateRatio, invoiceDue, money, projectSeconds, readyToInvoice, taskProgress, taskSeconds } from '../lib/stats'
+import { clientStats, effectiveRate, estimateRatio, invoiceDue, money, projectSeconds, readyToInvoice, taskProgress, taskSeconds } from '../lib/stats'
 import { useStore } from '../lib/store'
-import type { Project, Task, TaskKind } from '../types'
+import type { Client, Project, Task, TaskKind } from '../types'
+import { ClientSheet } from '../components/ClientSheet'
 import { Seg } from '../components/Fields'
+import { ProjectOptions } from '../components/ProjectOptions'
+import { ProjectPick } from '../components/ProjectPick'
+import { StepEdit, TaskEdit } from '../components/TaskEdit'
 import { kindOf, KIND_LABEL } from '../lib/kind'
 
 function TaskRow({ task }: { task: Task }) {
@@ -40,6 +44,7 @@ function TaskRow({ task }: { task: Task }) {
       {open && (
         <div className="sub">
           <div style={{ padding: '4px 4px 10px' }} className="stack">
+            <TaskEdit task={task} />
             {!task.done && (
               <div className="kind-seg">
                 <Seg<TaskKind>
@@ -50,6 +55,7 @@ function TaskRow({ task }: { task: Task }) {
                 />
               </div>
             )}
+            <ProjectPick task={task} />
             <label className="lab">
               First tiny step
               <input
@@ -64,7 +70,7 @@ function TaskRow({ task }: { task: Task }) {
           {task.subtasks.map((s) => (
             <div key={s.id} className={`item ${s.done ? 'done' : ''}`}>
               <input className="check sm" type="checkbox" checked={s.done} onChange={() => update((d) => toggleSubtask(d, task.id, s.id))} />
-              <span className="grow title" style={{ fontWeight: 400 }}>{s.title}</span>
+              <StepEdit task={task} step={s} />
             </div>
           ))}
           <form
@@ -89,10 +95,11 @@ function TaskRow({ task }: { task: Task }) {
   )
 }
 
-function ProjectSheet({ project, onClose }: { project?: Project; onClose: () => void }) {
-  const { update } = useStore()
+function ProjectSheet({ project, clientId, onClose }: { project?: Project; clientId?: string | null; onClose: () => void }) {
+  const { data, update } = useStore()
   const [name, setName] = useState(project?.name ?? '')
-  const [client, setClient] = useState(project?.client ?? '')
+  const [client, setClient] = useState<string>(project?.clientId ?? clientId ?? '')
+  const [newClient, setNewClient] = useState('')
   const [pay, setPay] = useState(project?.pay ? String(project.pay) : '')
   return (
     <Sheet title={project ? 'Edit project' : 'New project'} onClose={onClose}>
@@ -101,15 +108,35 @@ function ProjectSheet({ project, onClose }: { project?: Project; onClose: () => 
         onSubmit={(e) => {
           e.preventDefault()
           if (!name.trim()) return
-          update((d) => saveProject(d, { id: project?.id, name: name.trim(), client: client.trim(), pay: Math.max(0, Number(pay) || 0) }))
+          update((d) => {
+            let next = d
+            let id: string | null = client || null
+            if (client === 'new') {
+              if (newClient.trim()) {
+                const made = clientNamed(d, newClient)
+                next = made.data
+                id = made.id
+              } else id = null
+            }
+            return saveProject(next, { id: project?.id, name: name.trim(), clientId: id, pay: Math.max(0, Number(pay) || 0) })
+          })
           onClose()
         }}
       >
         <label className="lab">Name<input className="field" value={name} onChange={(e) => setName(e.target.value)} autoFocus /></label>
         <div className="lab-row">
-          <label className="lab">Client<input className="field" value={client} onChange={(e) => setClient(e.target.value)} /></label>
+          <label className="lab">Client
+            <select className="field" value={client} onChange={(e) => setClient(e.target.value)}>
+              <option value="">No client</option>
+              {data.clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              <option value="new">New client…</option>
+            </select>
+          </label>
           <label className="lab">Fee for the project (£)<input className="field" inputMode="decimal" value={pay} onChange={(e) => setPay(e.target.value)} placeholder="0" /></label>
         </div>
+        {client === 'new' && (
+          <label className="lab">Client's name<input className="field" value={newClient} onChange={(e) => setNewClient(e.target.value)} autoFocus /></label>
+        )}
         <div className="row" style={{ marginTop: 8 }}>
           <button className="btn">Save</button>
           {project && (
@@ -224,8 +251,7 @@ function TaskSheet({ onClose }: { onClose: () => void }) {
         <label className="lab">What needs doing?<input className="field" value={title} onChange={(e) => setTitle(e.target.value)} autoFocus /></label>
         <label className="lab">Project
           <select className="field" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
-            <option value="">No project</option>
-            {data.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            <ProjectOptions data={data} />
           </select>
         </label>
         <div className="lab-row">
@@ -246,21 +272,51 @@ function TaskSheet({ onClose }: { onClose: () => void }) {
 
 export function Work() {
   const { data } = useStore()
-  const [sheet, setSheet] = useState<'task' | 'project' | Project | null>(null)
+  const [taskSheet, setTaskSheet] = useState(false)
+  const [projectSheet, setProjectSheet] = useState<{ project?: Project; clientId?: string | null } | null>(null)
+  const [clientSheet, setClientSheet] = useState<{ client?: Client } | null>(null)
   const [invoicing, setInvoicing] = useState<Project | null>(null)
   const learned = estimateRatio(data)
   const [showDone, setShowDone] = useState(false)
   const visible = (t: Task) => showDone || !t.done
   const loose = data.tasks.filter((t) => t.projectId === null && visible(t))
   const finished = data.tasks.filter((t) => t.done).length
+  const noClient = data.projects.filter((p) => !p.clientId || !data.clients.some((c) => c.id === p.clientId))
+  // Clients with open work first, then the quiet ones, each alphabetical.
+  const clients = [...data.clients].sort((a, b) => {
+    const open = (c: Client) => (clientStats(data, c.id).openTasks > 0 ? 0 : 1)
+    return open(a) - open(b) || a.name.localeCompare(b.name)
+  })
+
+  const projectCard = (p: Project) => {
+    const tasks = data.tasks.filter((t) => t.projectId === p.id && visible(t))
+    const secs = projectSeconds(data, p.id)
+    const rate = effectiveRate(data, p)
+    return (
+      <section key={p.id} className="card">
+        <div className="row" style={{ alignItems: 'flex-start' }}>
+          <span className="dot" style={{ background: p.color, marginTop: 9 }} />
+          <button className="grow project-name" onClick={() => setProjectSheet({ project: p })} aria-label={`Edit ${p.name}`}>
+            <h2>{p.name}</h2>
+            <div className="faint small">{[secs > 0 ? `${fmtDuration(secs)} tracked` : '', rate ? `${money(Math.round(rate))}/hr so far` : '', 'tap to edit'].filter(Boolean).join(' · ')}</div>
+          </button>
+          <button className={`chip ${p.pay ? '' : 'clay'}`} onClick={() => setProjectSheet({ project: p })}>{p.pay ? money(p.pay) : 'Set fee'}</button>
+        </div>
+        <PayBar project={p} onInvoice={() => setInvoicing(p)} />
+        <div className="hairs" style={{ marginTop: 12 }}>
+          {tasks.length === 0 ? <div className="faint small" style={{ padding: '14px 4px' }}>No open tasks.</div> : tasks.map((t) => <TaskRow key={t.id} task={t} />)}
+        </div>
+      </section>
+    )
+  }
 
   return (
     <div className="page">
       <div className="head">
         <div>
           <div className="eyebrow">Work</div>
-          <h1>Projects & tasks</h1>
-          <p className="lede">Everything you're carrying, with what it pays and what it costs you in time.</p>
+          <h1>Clients & projects</h1>
+          <p className="lede">The people you work for, what you're making them, and what it pays.</p>
           {learned && (
             <p className="faint small" style={{ marginTop: 8 }}>
               {learned.ratio >= 1.15
@@ -271,38 +327,51 @@ export function Work() {
             </p>
           )}
         </div>
-        <div className="row">
-          <button className="btn quiet" onClick={() => setSheet('project')}>New project</button>
-          <button className="btn" onClick={() => setSheet('task')}>New task</button>
+        <div className="row" style={{ flexWrap: 'wrap' }}>
+          <button className="btn quiet" onClick={() => setClientSheet({})}>New client</button>
+          <button className="btn quiet" onClick={() => setProjectSheet({})}>New project</button>
+          <button className="btn" onClick={() => setTaskSheet(true)}>New task</button>
         </div>
       </div>
 
-      {data.projects.length === 0 && loose.length === 0 && (
-        <div className="empty"><b>Nothing here yet</b>Use the Dump page, or add a project to begin.</div>
+      {data.clients.length === 0 && data.projects.length === 0 && loose.length === 0 && (
+        <div className="empty"><b>Nothing here yet</b>Add a client, or put everything down on the Dump page.</div>
       )}
 
-      <div className="stack" style={{ gap: 28 }}>
-        {data.projects.map((p) => {
-          const tasks = data.tasks.filter((t) => t.projectId === p.id && visible(t))
-          const secs = projectSeconds(data, p.id)
-          const rate = effectiveRate(data, p)
+      <div className="stack" style={{ gap: 44 }}>
+        {clients.map((c) => {
+          const st = clientStats(data, c.id)
           return (
-            <section key={p.id} className="card">
-              <div className="row" style={{ alignItems: 'flex-start' }}>
-                <span className="dot" style={{ background: p.color, marginTop: 9 }} />
-                <div className="grow">
-                  <h2>{p.name}</h2>
-                  <div className="faint small">{[p.client, secs > 0 ? `${fmtDuration(secs)} tracked` : '', rate ? `${money(Math.round(rate))}/hr so far` : ''].filter(Boolean).join(' · ')}</div>
-                </div>
-                <button className={`chip ${p.pay ? '' : 'clay'}`} onClick={() => setSheet(p)}>{p.pay ? money(p.pay) : 'Set fee'}</button>
-              </div>
-              <PayBar project={p} onInvoice={() => setInvoicing(p)} />
-              <div className="hairs" style={{ marginTop: 12 }}>
-                {tasks.length === 0 ? <div className="faint small" style={{ padding: '14px 4px' }}>No open tasks.</div> : tasks.map((t) => <TaskRow key={t.id} task={t} />)}
+            <section key={c.id} className="client">
+              <button className="client-head" onClick={() => setClientSheet({ client: c })}>
+                <span className="avatar" style={{ background: `color-mix(in srgb, ${c.color} 35%, var(--raised))` }} aria-hidden="true">{c.name.charAt(0).toUpperCase()}</span>
+                <span className="grow">
+                  <span className="name">{c.name}</span>
+                  <span className="faint small meta">
+                    {[
+                      `${st.projects.length} ${st.projects.length === 1 ? 'project' : 'projects'}`,
+                      st.paid ? `${money(st.paid)} paid` : '',
+                      st.waiting ? `${money(st.waiting)} waiting` : '',
+                      st.openTasks ? `${st.openTasks} open ${st.openTasks === 1 ? 'task' : 'tasks'}` : 'all quiet',
+                    ].filter(Boolean).join(' · ')}
+                  </span>
+                </span>
+                <span className="faint small">Details</span>
+              </button>
+              <div className="stack" style={{ gap: 18 }}>
+                {st.projects.map(projectCard)}
+                <button className="add-under" onClick={() => setProjectSheet({ clientId: c.id })}>＋ New project for {c.name.split(' ')[0]}</button>
               </div>
             </section>
           )
         })}
+
+        {noClient.length > 0 && (
+          <section className="client">
+            {data.clients.length > 0 && <div className="client-head plain"><span className="name">Projects without a client</span></div>}
+            <div className="stack" style={{ gap: 18 }}>{noClient.map(projectCard)}</div>
+          </section>
+        )}
 
         {loose.length > 0 && (
           <section className="card flat">
@@ -318,9 +387,9 @@ export function Work() {
         </div>
       )}
 
-      {sheet === 'task' && <TaskSheet onClose={() => setSheet(null)} />}
-      {sheet === 'project' && <ProjectSheet onClose={() => setSheet(null)} />}
-      {sheet && typeof sheet === 'object' && <ProjectSheet project={sheet} onClose={() => setSheet(null)} />}
+      {taskSheet && <TaskSheet onClose={() => setTaskSheet(false)} />}
+      {projectSheet && <ProjectSheet project={projectSheet.project} clientId={projectSheet.clientId} onClose={() => setProjectSheet(null)} />}
+      {clientSheet && <ClientSheet client={clientSheet.client} onClose={() => setClientSheet(null)} />}
       {invoicing && <InvoiceSheet project={invoicing} onClose={() => setInvoicing(null)} />}
     </div>
   )

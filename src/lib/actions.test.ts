@@ -204,3 +204,47 @@ describe('less friction', () => {
     expect(trial.title).toBe("That's 10 minutes.")
   })
 })
+
+describe('moving tasks between projects', () => {
+  it('puts a loose task into a project and back out', async () => {
+    const { patchTask } = await import('./actions')
+    let d = withProject()
+    d = addTask(d, { projectId: null, title: 'Final logo artwork', estimateMinutes: 60 }, monday8)
+    const id = d.tasks[0].id
+    d = patchTask(d, id, { projectId: d.projects[0].id })
+    expect(d.tasks[0].projectId).toBe(d.projects[0].id)
+    d = patchTask(d, id, { projectId: null })
+    expect(d.tasks[0].projectId).toBeNull()
+  })
+})
+
+describe('editing a task later', () => {
+  it('re-plans when the hours change, keeping time already worked', async () => {
+    const { editTask } = await import('./actions')
+    let d = addTask(emptyData(), { projectId: null, title: 'Final logo artwork', estimateMinutes: 120, dueDate: '2026-10-21' }, monday8)
+    d = { ...d, blocks: d.blocks.map((b, i) => (i === 0 ? { ...b, done: true } : b)) }
+    d = editTask(d, d.tasks[0].id, { estimateMinutes: 240, title: 'Final logo files' }, monday8)
+    expect(d.tasks[0]).toMatchObject({ title: 'Final logo files', estimateMinutes: 240 })
+    const mine = d.blocks.filter((b) => b.taskId === d.tasks[0].id)
+    expect(mine.filter((b) => b.done)).toHaveLength(1)
+    expect(mine.reduce((a, b) => a + b.minutes, 0)).toBe(240)
+    expect(mine.every((b) => b.date !== '')).toBe(true)
+  })
+
+  it('moves blocks to fit a new due date', async () => {
+    const { editTask } = await import('./actions')
+    let d = addTask(emptyData(), { projectId: null, title: 'Final logo artwork', estimateMinutes: 180, dueDate: '2026-10-23' }, monday8)
+    d = editTask(d, d.tasks[0].id, { dueDate: '2026-10-19' }, monday8)
+    expect(d.tasks[0].dueDate).toBe('2026-10-19')
+    expect(d.blocks.every((b) => b.date === '2026-10-19')).toBe(true)
+  })
+
+  it('renames and removes steps', async () => {
+    const { renameSubtask, deleteSubtask } = await import('./actions')
+    let d = addTask(emptyData(), { projectId: null, title: 'Moodboard', subtasks: ['Collect', 'Pick palette'] }, monday8)
+    const [a, b] = d.tasks[0].subtasks
+    d = renameSubtask(d, d.tasks[0].id, a.id, 'Collect references')
+    d = deleteSubtask(d, d.tasks[0].id, b.id)
+    expect(d.tasks[0].subtasks.map((x) => x.title)).toEqual(['Collect references'])
+  })
+})

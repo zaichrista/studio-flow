@@ -52,10 +52,20 @@ export interface Settings {
   look: Look
 }
 
+/** Someone you work for. Projects sit under clients; tasks sit under projects. */
+export interface Client {
+  id: string
+  name: string
+  email: string
+  notes: string
+  color: string
+}
+
 export interface Project {
   id: string
   name: string
-  client: string
+  /** The client it's for, or null */
+  clientId: string | null
   /** Fixed fee for the whole project, in pounds */
   pay: number
   color: string
@@ -199,6 +209,7 @@ export interface CalEvent {
 export interface AppData {
   version: 1
   settings: Settings
+  clients: Client[]
   projects: Project[]
   tasks: Task[]
   blocks: Block[]

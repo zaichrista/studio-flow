@@ -4,6 +4,8 @@ import { addDays, dayName, fmtDuration, iso, longDate, smallDate } from '../lib/
 import { kindOf, KIND_LABEL } from '../lib/kind'
 import type { TaskKind } from '../types'
 import { Seg } from './Fields'
+import { ProjectPick } from './ProjectPick'
+import { TaskEdit } from './TaskEdit'
 import { remainingMinutes } from '../lib/scheduler'
 import { useStore } from '../lib/store'
 import { Sheet } from './Sheet'
@@ -60,10 +62,17 @@ export function BlockSheet({ blockId, onClose }: { blockId: string; onClose: () 
   return (
     <Sheet title={task?.title ?? 'Block'} onClose={onClose}>
       <div className="stack">
-        <div className="row small soft">
-          {project && <span className="dot" style={{ background: project.color }} />}
-          <span>{project?.name ?? 'Personal'}</span>
-        </div>
+        {task ? (
+          <>
+            <TaskEdit task={task} />
+            <ProjectPick task={task} />
+          </>
+        ) : (
+          <div className="row small soft">
+            {project && <span className="dot" style={{ background: project.color }} />}
+            <span>{project?.name ?? 'Personal'}</span>
+          </div>
+        )}
         <div>
           <div>{block.date ? longDate(block.date) : 'Waiting for a slot'}</div>
           <div className="soft small">

@@ -142,3 +142,16 @@ export function taxSetAside(d: AppData, from: string, to: string): number {
     .reduce((a, t) => a + t.amount, 0)
   return Math.round(income * (d.settings.taxPercent / 100) * 100) / 100
 }
+
+/** What a client has meant to you: projects, money in, money waiting, time given. */
+export function clientStats(d: AppData, clientId: string, now = Date.now()) {
+  const projects = d.projects.filter((p) => p.clientId === clientId)
+  const ids = new Set(projects.map((p) => p.id))
+  const paid = d.txns.filter((t) => t.kind === 'income' && t.projectId && ids.has(t.projectId)).reduce((a, t) => a + t.amount, 0)
+  const waiting = projects.filter((p) => p.invoice && !p.invoice.paidOn).reduce((a, p) => a + p.pay, 0)
+  const seconds = projects.reduce((a, p) => a + projectSeconds(d, p.id, now), 0)
+  const openTasks = d.tasks.filter((t) => t.projectId && ids.has(t.projectId) && !t.done).length
+  const fees = projects.reduce((a, p) => a + p.pay, 0)
+  const rate = seconds / 3600 > 0.05 && fees > 0 ? fees / (seconds / 3600) : null
+  return { projects, paid, waiting, seconds, openTasks, rate }
+}

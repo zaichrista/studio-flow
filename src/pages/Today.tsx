@@ -3,6 +3,7 @@ import { BlockSheet, useSnooze } from '../components/BlockSheet'
 import { EventSheet } from '../components/EventSheet'
 import { Care } from '../components/Care'
 import { DayArc } from '../components/DayArc'
+import { openFocus } from '../components/FocusMode'
 import { Intention } from '../components/Intention'
 import { eveningsKept, plannedToday, plannedWeek, zenLine } from '../lib/wellbeing'
 import { listenShutdown, ShutdownSheet } from '../components/Shutdown'
@@ -180,7 +181,10 @@ export function Today({ go }: { go: (p: PageId) => void }) {
                 {fmtDuration(Math.max(0, activeBlock.minutes * 60 - activeBlock.loggedSeconds - secs))} left in this block
               </div>
             )}
-            <button className="btn clay" onClick={stop}>Stop</button>
+            <div className="alts">
+              <button className="btn clay" onClick={stop}>Stop</button>
+              <button className="btn quiet" onClick={openFocus}>Focus mode</button>
+            </div>
           </>
         ) : closed ? (
           <>
@@ -197,6 +201,7 @@ export function Today({ go }: { go: (p: PageId) => void }) {
             {nextHint && <div className="hint">{nextHint}</div>}
             <div className="alts">
               <button className="btn" onClick={() => update((d) => startTimer(d, next.taskId, next.id))}>Begin</button>
+              <button className="btn quiet" onClick={() => { update((d) => startTimer(d, next.taskId, next.id)); openFocus() }}>Focus mode</button>
               <button className="btn quiet" onClick={() => update((d) => startTimer(d, next.taskId, next.id, new Date(), 10))}>Just 10 minutes</button>
               <button className="btn ghost small" onClick={() => snooze(next.id)}>Not now</button>
             </div>

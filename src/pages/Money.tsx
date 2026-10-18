@@ -139,16 +139,23 @@ export function Money() {
           <div className="hairs">
             {waiting.map((p) => {
               const due = invoiceDue(p, today)!
+              const client = data.clients.find((c) => c.id === p.clientId)
+              const chase = client?.email
+                ? `mailto:${client.email}?subject=${encodeURIComponent(`Invoice for ${p.name}`)}&body=${encodeURIComponent(
+                    `Hi ${client.name.split(' ')[0]},\n\nHope you're well. Just a gentle nudge on the invoice for ${p.name} (${money(p.pay)}), which was due on ${smallDate(due.due)}. Let me know if you need anything from me to get it paid.\n\nThank you!`,
+                  )}`
+                : null
               return (
                 <div key={p.id} className="item">
                   <span className="dot" style={{ background: p.color }} />
                   <div className="grow">
-                    <div className="title">{p.name}</div>
+                    <div className="title">{p.name}{client && <span className="faint" style={{ fontWeight: 400 }}> · {client.name}</span>}</div>
                     <div className={`small ${due.late > 0 ? 'neg' : 'faint'}`}>
                       {due.late > 0 ? `${due.late} ${due.late === 1 ? 'day' : 'days'} late. A friendly chase is fair.` : due.due === today ? 'Due today' : `Due ${smallDate(due.due)}`}
                     </div>
                   </div>
                   <span className="num">{money(p.pay)}</span>
+                  {chase && due.late > 0 && <a className="btn ghost small" href={chase}>Chase</a>}
                   <button className="btn quiet small" onClick={() => { update((d) => markPaid(d, p.id)); toast(`Paid. Keep ${money(Math.round(p.pay * pct / 100))} aside for tax.`) }}>Paid</button>
                 </div>
               )

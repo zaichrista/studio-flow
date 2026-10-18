@@ -3,6 +3,7 @@ import { stopTimer } from '../lib/actions'
 import { fmtClock } from '../lib/dates'
 import { activeSeconds } from '../lib/stats'
 import { useNow, useStore } from '../lib/store'
+import { openFocus } from './FocusMode'
 import { askResume } from './ResumePrompt'
 import { toast } from './Toast'
 
@@ -36,6 +37,7 @@ export function TimerDock({ hidden }: { hidden: boolean }) {
           <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{task?.title ?? 'Working'}</div>
         </div>
         <span className="t">{fmtClock(activeSeconds(data, now))}</span>
+        <button className="stop" onClick={openFocus} aria-label="Focus mode">Focus</button>
         <button className="stop" onClick={stop}>Stop</button>
       </div>
     </div>

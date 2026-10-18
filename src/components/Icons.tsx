@@ -26,7 +26,7 @@ export function Ring({ left }: { left?: number }) {
     return (
       <svg className="ring countdown" viewBox="0 0 220 220" fill="none" role="img" aria-label={`${Math.round(left * 100)}% of the block left`}>
         <circle cx="110" cy="110" r="90" stroke="var(--sage)" strokeOpacity=".22" strokeWidth="14" />
-        <circle cx="110" cy="110" r="90" stroke="var(--sage-deep)" strokeWidth="14" strokeLinecap="round" strokeDasharray={`${arc} ${CIRCLE}`} transform="rotate(-90 110 110)" />
+        {arc > 0.5 && <circle cx="110" cy="110" r="90" stroke="var(--sage-deep)" strokeWidth="14" strokeLinecap="round" strokeDasharray={`${arc} ${CIRCLE}`} transform="rotate(-90 110 110)" />}
       </svg>
     )
   }

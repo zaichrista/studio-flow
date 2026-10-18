@@ -1,4 +1,4 @@
-import type { AppData, Block, CalEvent, DayNote, Idea, Invoice, Project, SortedDump, Task, TaskKind, Txn } from '../types'
+import type { AppData, Block, CalEvent, Client, DayNote, Idea, Invoice, Project, SortedDump, Task, TaskKind, Txn } from '../types'
 import { iso, nowMinutes, stamp, toMin } from './dates'
 import { uid } from './id'
 import { guessKind } from './kind'
@@ -18,6 +18,7 @@ export const PALETTE = ['#9bb3a0', '#d9a88f', '#a9b8cc', '#d8c690', '#c4a9c4', '
 export const emptyData = (): AppData => ({
   version: 1,
   settings: DEFAULT_SETTINGS,
+  clients: [],
   projects: [],
   tasks: [],
   blocks: [],
@@ -114,10 +115,12 @@ export function applySorted(d: AppData, sorted: SortedDump, now: Date = new Date
     if (!name) continue
     let project = projects.find((x) => x.name.toLowerCase() === name.toLowerCase())
     if (!project) {
+      const made = p.client?.trim() ? clientNamed(next, p.client) : { data: next, id: null }
+      next = made.data
       project = {
         id: uid(),
         name,
-        client: p.client?.trim() ?? '',
+        clientId: made.id,
         pay: p.pay && p.pay > 0 ? p.pay : 0,
         color: PALETTE[projects.length % PALETTE.length],
         archived: false,
@@ -159,7 +162,7 @@ export function ideaToTask(d: AppData, id: string, now: Date = new Date()): AppD
 }
 
 /** Edit the small bits of a task: its first step, where you were up to. */
-export function patchTask(d: AppData, id: string, patch: Partial<Pick<Task, 'firstStep' | 'resumeNote' | 'title' | 'kind'>>): AppData {
+export function patchTask(d: AppData, id: string, patch: Partial<Pick<Task, 'firstStep' | 'resumeNote' | 'title' | 'kind' | 'projectId'>>): AppData {
   const next = { ...d, tasks: d.tasks.map((t) => (t.id === id ? { ...t, ...patch } : t)) }
   if (!patch.kind) return next
   // A new kind may want a different part of the day: move its untouched blocks.
@@ -246,7 +249,7 @@ export function saveProject(d: AppData, p: Partial<Project> & { id?: string; nam
   const project: Project = {
     id: uid(),
     name: p.name,
-    client: p.client ?? '',
+    clientId: p.clientId ?? null,
     pay: p.pay ?? 0,
     color: p.color ?? PALETTE[d.projects.length % PALETTE.length],
     archived: false,
@@ -387,4 +390,70 @@ export function setDayNote(d: AppData, date: string, patch: Partial<DayNote>): A
 export function toggleCare(d: AppData, date: string, key: string): AppData {
   const care = d.days[date]?.care ?? []
   return setDayNote(d, date, { care: care.includes(key) ? care.filter((c) => c !== key) : [...care, key] })
+}
+
+/** The client with this name (any case), made if it doesn't exist yet. */
+export function clientNamed(d: AppData, name: string): { data: AppData; id: string } {
+  const clean = name.trim()
+  const found = d.clients.find((c) => c.name.toLowerCase() === clean.toLowerCase())
+  if (found) return { data: d, id: found.id }
+  const client: Client = { id: uid(), name: clean, email: '', notes: '', color: PALETTE[(d.clients.length + 2) % PALETTE.length] }
+  return { data: { ...d, clients: [...d.clients, client] }, id: client.id }
+}
+
+export function saveClient(d: AppData, c: Partial<Client> & { name: string; id?: string }): { data: AppData; id: string } {
+  if (c.id && d.clients.some((x) => x.id === c.id)) {
+    return { data: { ...d, clients: d.clients.map((x) => (x.id === c.id ? { ...x, ...c } : x)) }, id: c.id }
+  }
+  const made = clientNamed(d, c.name)
+  return { data: { ...made.data, clients: made.data.clients.map((x) => (x.id === made.id ? { ...x, ...c, id: made.id } : x)) }, id: made.id }
+}
+
+/** Remove a client; their projects stay, without a client. */
+export function deleteClient(d: AppData, id: string): AppData {
+  return {
+    ...d,
+    clients: d.clients.filter((c) => c.id !== id),
+    projects: d.projects.map((p) => (p.clientId === id ? { ...p, clientId: null } : p)),
+  }
+}
+
+/**
+ * Change a task after the fact. A new estimate or due date re-plans the
+ * blocks that haven't been started; time already worked stays where it is.
+ */
+export function editTask(
+  d: AppData,
+  id: string,
+  patch: { title?: string; estimateMinutes?: number; dueDate?: string },
+  now: Date = new Date(),
+): AppData {
+  const task = d.tasks.find((t) => t.id === id)
+  if (!task) return d
+  const next: Task = {
+    ...task,
+    ...(patch.title?.trim() ? { title: patch.title.trim() } : {}),
+    ...(patch.estimateMinutes && patch.estimateMinutes > 0 ? { estimateMinutes: quarter(patch.estimateMinutes) } : {}),
+    ...(patch.dueDate ? { dueDate: patch.dueDate } : {}),
+  }
+  const tasks = d.tasks.map((t) => (t.id === id ? next : t))
+  const replanBlocks = next.estimateMinutes !== task.estimateMinutes || next.dueDate !== task.dueDate
+  if (!replanBlocks || task.done) return { ...d, tasks }
+  const keep = d.active?.blockId ?? null
+  const fixed = d.blocks.filter((b) => b.taskId !== id || b.done || b.loggedSeconds > 0 || b.id === keep)
+  const worked = fixed.filter((b) => b.taskId === id).reduce((a, b) => a + (b.done ? b.minutes : Math.floor(b.loggedSeconds / 60)), 0)
+  const owed = next.estimateMinutes - worked
+  const fresh = owed >= 15 ? makeBlocks({ ...next, estimateMinutes: owed }, d.settings) : []
+  return replan({ ...d, tasks, blocks: [...fixed, ...fresh] }, now)
+}
+
+export function renameSubtask(d: AppData, taskId: string, subId: string, title: string): AppData {
+  return {
+    ...d,
+    tasks: d.tasks.map((t) => (t.id === taskId ? { ...t, subtasks: t.subtasks.map((s) => (s.id === subId ? { ...s, title } : s)) } : t)),
+  }
+}
+
+export function deleteSubtask(d: AppData, taskId: string, subId: string): AppData {
+  return { ...d, tasks: d.tasks.map((t) => (t.id === taskId ? { ...t, subtasks: t.subtasks.filter((s) => s.id !== subId) } : t)) }
 }
