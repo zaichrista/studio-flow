@@ -1,10 +1,11 @@
 import type { AppData, Block, CalEvent, Client, DayNote, Idea, Invoice, Project, SortedDump, Task, TaskKind, Txn } from '../types'
-import { iso, nowMinutes, stamp, toMin } from './dates'
+import { fromMin, iso, nowMinutes, stamp, toMin, weekday } from './dates'
 import { uid } from './id'
 import { guessKind } from './kind'
 import { parseDump } from './parseDump'
 import {
   defaultDue,
+  eventsOn,
   DEFAULT_SETTINGS,
   makeBlocks,
   placePending,
@@ -324,6 +325,54 @@ export function saveEvent(d: AppData, e: Omit<CalEvent, 'id'> & { id?: string })
     ? d.events.map((x) => (x.id === event.id ? event : x))
     : [...d.events, event]
   return replan({ ...d, events })
+}
+
+/**
+ * Put a work block exactly where it was dropped. Fixed time (events, breaks)
+ * and the past can't be taken, so those return a reason instead. Other work
+ * already there steps aside to the next free slot.
+ */
+export function moveBlock(
+  d: AppData,
+  id: string,
+  date: string,
+  start: number,
+  now: Date = new Date(),
+): { data: AppData } | { reason: string } {
+  const block = d.blocks.find((b) => b.id === id)
+  if (!block) return { reason: 'That block has gone.' }
+  const end = start + block.minutes
+  const today = iso(now)
+  if (date < today || (date === today && start < nowMinutes(now))) return { reason: "That time has already passed." }
+  if (end > 24 * 60) return { reason: "That would run past midnight." }
+  const clash = eventsOn(d.events, date).find((o) => start < o.to && end > o.from)
+  if (clash) return { reason: `That time belongs to ${clash.event.title}.` }
+  const rest = d.settings.breaks.find((b) => b.minutes > 0 && start < toMin(b.start) + b.minutes && end > toMin(b.start))
+  if (rest) return { reason: `That's your ${rest.name.toLowerCase()}.` }
+  const keep = d.active?.blockId ?? null
+  const blocks = d.blocks.map((b) => {
+    if (b.id === id) return { ...b, date, start: fromMin(start), after: undefined }
+    // Whatever was in the way moves on, unless it's underway.
+    const inWay = b.date === date && !b.done && b.id !== keep && b.loggedSeconds === 0 &&
+      toMin(b.start) < end && toMin(b.start) + b.minutes > start
+    return inWay ? { ...b, date: '', start: '' } : b
+  })
+  return { data: replan({ ...d, blocks }, now) }
+}
+
+/**
+ * Move one occurrence of an event (or stretch it). A one-off simply moves; a
+ * repeating event moves every repeat, swapping the weekday if it changed days.
+ */
+export function moveEvent(d: AppData, id: string, fromDate: string, toDate: string, start: number, end: number): AppData {
+  const e = d.events.find((x) => x.id === id)
+  if (!e) return d
+  const times = { start: fromMin(start), end: fromMin(Math.min(end, 24 * 60 - 1)) }
+  if (e.repeatDays.length === 0) return saveEvent(d, { ...e, ...times, date: toDate })
+  const was = weekday(fromDate)
+  const now = weekday(toDate)
+  const repeatDays = was === now ? e.repeatDays : [...new Set(e.repeatDays.map((n) => (n === was ? now : n)))]
+  return saveEvent(d, { ...e, ...times, repeatDays })
 }
 
 export function deleteEvent(d: AppData, id: string): AppData {

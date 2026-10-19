@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { IconClose, IconPlus } from '../components/Icons'
+import type { ReactNode } from 'react'
+import { IconChevronDown, IconClose, IconPlus } from '../components/Icons'
 import { Sheet } from '../components/Sheet'
 import { toast } from '../components/Toast'
 import { addSubtask, addTask, clientNamed, deleteProject, deleteTask, markPaid, patchTask, saveProject, sendInvoice, toggleSubtask, toggleTask, unsendInvoice } from '../lib/actions'
@@ -14,6 +15,7 @@ import { ProjectOptions } from '../components/ProjectOptions'
 import { ProjectPick } from '../components/ProjectPick'
 import { StepEdit, TaskEdit } from '../components/TaskEdit'
 import { kindOf, KIND_LABEL } from '../lib/kind'
+import { splitEstimate } from '../lib/estimate'
 
 function TaskRow({ task }: { task: Task }) {
   const { data, update } = useStore()
@@ -95,6 +97,44 @@ function TaskRow({ task }: { task: Task }) {
       )}
     </div>
   )
+}
+
+/** One quiet line: type, press return, done. Stays open for the next one. */
+function QuickAdd({ placeholder, label, onAdd }: { placeholder: string; label: string; onAdd: (text: string) => void }) {
+  const [text, setText] = useState('')
+  return (
+    <form
+      className="quick-add"
+      onSubmit={(e) => {
+        e.preventDefault()
+        if (!text.trim()) return
+        onAdd(text.trim())
+        setText('')
+      }}
+    >
+      <IconPlus />
+      <input value={text} onChange={(e) => setText(e.target.value)} placeholder={placeholder} aria-label={label} enterKeyHint="done" />
+    </form>
+  )
+}
+
+/** Which clients are folded away, remembered on this device. */
+function useFolded(): [Set<string>, (id: string) => void] {
+  const [folded, setFolded] = useState<Set<string>>(() => {
+    try { return new Set(JSON.parse(localStorage.getItem('sf-folded') ?? '[]')) } catch { return new Set() }
+  })
+  const toggle = (id: string) => setFolded((prev) => {
+    const next = new Set(prev)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    try { localStorage.setItem('sf-folded', JSON.stringify([...next])) } catch { /* private mode: fine for this visit */ }
+    return next
+  })
+  return [folded, toggle]
+}
+
+function Fold({ open, children }: { open: boolean; children: ReactNode }) {
+  return <div className={`fold-body ${open ? 'open' : ''}`} aria-hidden={!open}><div>{children}</div></div>
 }
 
 function ProjectSheet({ project, clientId, onClose }: { project?: Project; clientId?: string | null; onClose: () => void }) {
@@ -273,7 +313,14 @@ function TaskSheet({ onClose }: { onClose: () => void }) {
 }
 
 export function Work() {
-  const { data } = useStore()
+  const { data, update } = useStore()
+  const [folded, toggleFold] = useFolded()
+  const quickTask = (projectId: string | null) => (text: string) => {
+    const { title, minutes } = splitEstimate(text)
+    update((d) => addTask(d, { projectId, title, estimateMinutes: minutes }))
+    toast(`Added${minutes ? ` (${fmtDuration(minutes * 60)})` : ''} and placed on your calendar.`)
+  }
+  const quickProject = (clientId: string | null) => (name: string) => update((d) => saveProject(d, { name, clientId }))
   const [taskSheet, setTaskSheet] = useState(false)
   const [projectSheet, setProjectSheet] = useState<{ project?: Project; clientId?: string | null } | null>(null)
   const [clientSheet, setClientSheet] = useState<{ client?: Client } | null>(null)
@@ -306,7 +353,8 @@ export function Work() {
         </div>
         <PayBar project={p} onInvoice={() => setInvoicing(p)} />
         <div className="hairs" style={{ marginTop: 12 }}>
-          {tasks.length === 0 ? <div className="faint small" style={{ padding: '14px 4px' }}>No open tasks.</div> : tasks.map((t) => <TaskRow key={t.id} task={t} />)}
+          {tasks.map((t) => <TaskRow key={t.id} task={t} />)}
+          <QuickAdd placeholder={tasks.length ? 'Add a task' : 'No open tasks. Add one?'} label={`Add a task to ${p.name}`} onAdd={quickTask(p.id)} />
         </div>
       </section>
     )
@@ -330,9 +378,9 @@ export function Work() {
           )}
         </div>
         <div className="row" style={{ flexWrap: 'wrap' }}>
-          <button className="btn quiet" onClick={() => setClientSheet({})}>New client</button>
-          <button className="btn quiet" onClick={() => setProjectSheet({})}>New project</button>
-          <button className="btn" onClick={() => setTaskSheet(true)}>New task</button>
+          <button className="btn ghost small" onClick={() => setClientSheet({})}>＋ Client</button>
+          <button className="btn ghost small" onClick={() => setProjectSheet({})}>＋ Project</button>
+          <button className="btn quiet small" onClick={() => setTaskSheet(true)}>＋ Task</button>
         </div>
       </div>
 
@@ -344,41 +392,62 @@ export function Work() {
         {clients.map((c) => {
           const st = clientStats(data, c.id)
           return (
-            <section key={c.id} className="client">
-              <button className="client-head" onClick={() => setClientSheet({ client: c })}>
-                <span className="avatar" style={{ background: `color-mix(in srgb, ${c.color} 35%, var(--raised))` }} aria-hidden="true">{c.name.charAt(0).toUpperCase()}</span>
-                <span className="grow">
-                  <span className="name">{c.name}</span>
-                  <span className="faint small meta">
-                    {[
-                      `${st.projects.length} ${st.projects.length === 1 ? 'project' : 'projects'}`,
-                      st.paid ? `${money(st.paid)} paid` : '',
-                      st.waiting ? `${money(st.waiting)} waiting` : '',
-                      st.openTasks ? `${st.openTasks} open ${st.openTasks === 1 ? 'task' : 'tasks'}` : 'all quiet',
-                    ].filter(Boolean).join(' · ')}
+            <section key={c.id} className={`client ${folded.has(c.id) ? 'folded' : ''}`}>
+              <div className="client-head">
+                <button className="fold-btn" onClick={() => toggleFold(c.id)} aria-expanded={!folded.has(c.id)} aria-label={`${folded.has(c.id) ? 'Show' : 'Hide'} ${c.name}`}>
+                  <IconChevronDown />
+                </button>
+                <button className="client-who" onClick={() => toggleFold(c.id)} aria-expanded={!folded.has(c.id)}>
+                  <span className="avatar" style={{ background: `color-mix(in srgb, ${c.color} 35%, var(--raised))` }} aria-hidden="true">{c.name.charAt(0).toUpperCase()}</span>
+                  <span className="grow">
+                    <span className="name">{c.name}</span>
+                    <span className="faint small meta">
+                      {[
+                        `${st.projects.length} ${st.projects.length === 1 ? 'project' : 'projects'}`,
+                        st.paid ? `${money(st.paid)} paid` : '',
+                        st.waiting ? `${money(st.waiting)} waiting` : '',
+                        st.spent ? `${money(st.spent)} spent` : '',
+                        st.openTasks ? `${st.openTasks} open ${st.openTasks === 1 ? 'task' : 'tasks'}` : 'all quiet',
+                      ].filter(Boolean).join(' · ')}
+                    </span>
                   </span>
-                </span>
-                <span className="faint small">Details</span>
-              </button>
-              <div className="stack" style={{ gap: 18 }}>
-                {st.projects.map(projectCard)}
-                <button className="add-under" onClick={() => setProjectSheet({ clientId: c.id })}>＋ New project for {c.name.split(' ')[0]}</button>
+                </button>
+                <button className="btn ghost small" onClick={() => setClientSheet({ client: c })}>Details</button>
               </div>
+              <Fold open={!folded.has(c.id)}>
+                <div className="stack" style={{ gap: 18 }}>
+                  {st.projects.map(projectCard)}
+                  <QuickAdd placeholder={`New project for ${c.name.split(' ')[0]}`} label={`New project for ${c.name}`} onAdd={quickProject(c.id)} />
+                </div>
+              </Fold>
             </section>
           )
         })}
 
         {noClient.length > 0 && (
-          <section className="client">
-            {data.clients.length > 0 && <div className="client-head plain"><span className="name">Projects without a client</span></div>}
-            <div className="stack" style={{ gap: 18 }}>{noClient.map(projectCard)}</div>
+          <section className={`client ${folded.has('none') ? 'folded' : ''}`}>
+            {data.clients.length > 0 && (
+              <div className="client-head plain">
+                <button className="fold-btn" onClick={() => toggleFold('none')} aria-expanded={!folded.has('none')} aria-label={`${folded.has('none') ? 'Show' : 'Hide'} projects without a client`}><IconChevronDown /></button>
+                <button className="client-who" onClick={() => toggleFold('none')} aria-expanded={!folded.has('none')}>
+                  <span className="name">Projects without a client</span>
+                  {folded.has('none') && <span className="faint small">{noClient.length}</span>}
+                </button>
+              </div>
+            )}
+            <Fold open={data.clients.length === 0 || !folded.has('none')}>
+              <div className="stack" style={{ gap: 18 }}>{noClient.map(projectCard)}</div>
+            </Fold>
           </section>
         )}
 
         {loose.length > 0 && (
           <section className="card flat">
             <h2>Everything else</h2>
-            <div className="hairs" style={{ marginTop: 12 }}>{loose.map((t) => <TaskRow key={t.id} task={t} />)}</div>
+            <div className="hairs" style={{ marginTop: 12 }}>
+              {loose.map((t) => <TaskRow key={t.id} task={t} />)}
+              <QuickAdd placeholder="Add a task" label="Add a task with no project" onAdd={quickTask(null)} />
+            </div>
           </section>
         )}
       </div>

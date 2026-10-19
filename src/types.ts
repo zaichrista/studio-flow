@@ -164,6 +164,8 @@ export interface Txn {
   note: string
   /** The project this payment was for */
   projectId?: string
+  /** The client it was received from or spent for (else the project's client) */
+  clientId?: string
 }
 
 /** The day's own notes: what you meant to do with it, and one good thing about it. */

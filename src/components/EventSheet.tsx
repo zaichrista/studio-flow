@@ -17,14 +17,14 @@ const DAYS = [
   [1, 'M'], [2, 'T'], [3, 'W'], [4, 'T'], [5, 'F'], [6, 'S'], [0, 'S'],
 ] as const
 
-export function EventSheet({ event, date, onClose }: { event?: CalEvent; date?: string; onClose: () => void }) {
+export function EventSheet({ event, date, from, to, onClose }: { event?: CalEvent; date?: string; from?: string; to?: string; onClose: () => void }) {
   const { update } = useStore()
   const start0 = event?.date ?? date ?? iso()
   const [title, setTitle] = useState(event?.title ?? '')
   const [kind, setKind] = useState<EventKind>(event?.kind ?? 'shift')
   const [day, setDay] = useState(start0)
-  const [start, setStart] = useState(event?.start ?? '10:00')
-  const [end, setEnd] = useState(event?.end ?? '16:00')
+  const [start, setStart] = useState(event?.start ?? from ?? '10:00')
+  const [end, setEnd] = useState(event?.end ?? to ?? '16:00')
   const [repeat, setRepeat] = useState((event?.repeatDays.length ?? 0) > 0)
   const [repeatDays, setRepeatDays] = useState<number[]>(event?.repeatDays.length ? event.repeatDays : [weekday(start0)])
   const [until, setUntil] = useState(event?.until ?? '')
@@ -65,7 +65,7 @@ export function EventSheet({ event, date, onClose }: { event?: CalEvent; date?: 
         until: repeat ? until : '',
       }),
     )
-    toast('Added. Your work has made room around it.')
+    toast(event ? 'Saved. Your work has made room around it.' : 'Added. Your work has made room around it.')
     onClose()
   }
 

@@ -28,11 +28,12 @@ const WRAP_MINUTES = [0, 5, 10]
 const BUFFER_MINUTES = [0, 5, 10, 15, 20, 30]
 const WEEK_HOURS = [0, 15, 20, 25, 30, 35, 40, 45, 50]
 
-const PALETTES: { id: Look['palette']; name: string; color: string }[] = [
-  { id: 'blush', name: 'Blush', color: '#f9eeea' },
-  { id: 'linen', name: 'Linen', color: '#f6f1e8' },
-  { id: 'sage', name: 'Sage', color: '#eef2ed' },
-  { id: 'lilac', name: 'Lilac', color: '#f1edf6' },
+/** Each swatch shows its background and a hint of its colour, in light and in dark. */
+const PALETTES: { id: Look['palette']; name: string; light: [string, string]; dark: [string, string] }[] = [
+  { id: 'blush', name: 'Blush', light: ['#f9eeea', '#e3b8aa'], dark: ['#262121', '#9c7468'] },
+  { id: 'linen', name: 'Linen', light: ['#f6f1e8', '#d6c4a4'], dark: ['#25221e', '#958670'] },
+  { id: 'sage', name: 'Sage', light: ['#eef2ed', '#a9c0ad'], dark: ['#202622', '#73907b'] },
+  { id: 'lilac', name: 'Lilac', light: ['#f1edf6', '#c4b4da'], dark: ['#24202a', '#8a7ba3'] },
 ]
 
 function DayLine({ s }: { s: S }) {
@@ -226,7 +227,7 @@ export function Settings() {
               <div className="swatches" role="radiogroup" aria-label="Colours">
                 {PALETTES.map((p) => (
                   <button key={p.id} role="radio" aria-checked={s.look.palette === p.id} className={`swatch ${s.look.palette === p.id ? 'on' : ''}`} onClick={() => setLook({ palette: p.id })}>
-                    <i style={{ background: p.color }} />
+                    <i style={{ ['--sw' as string]: p.light[0], ['--sw-tint' as string]: p.light[1], ['--sw-dark' as string]: p.dark[0], ['--sw-tint-dark' as string]: p.dark[1] }} />
                     {p.name}
                   </button>
                 ))}

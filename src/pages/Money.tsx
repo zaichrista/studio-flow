@@ -4,7 +4,7 @@ import { Sheet } from '../components/Sheet'
 import { toast } from '../components/Toast'
 import { addTxn, deleteTxn, markPaid } from '../lib/actions'
 import { iso, longDate, monthLabel, smallDate } from '../lib/dates'
-import { awaitingPayment, daysBetween, invoiceDue, money, monthSummary, nextTaxDay, taxSetAside, taxYear } from '../lib/stats'
+import { txnClient, awaitingPayment, daysBetween, invoiceDue, money, monthSummary, nextTaxDay, taxSetAside, taxYear } from '../lib/stats'
 import { useStore } from '../lib/store'
 import type { Txn } from '../types'
 
@@ -19,8 +19,9 @@ function shiftMonth(month: string, n: number): string {
 }
 
 function TxnSheet({ onClose }: { onClose: () => void }) {
-  const { update } = useStore()
+  const { data, update } = useStore()
   const [kind, setKind] = useState<Txn['kind']>('expense')
+  const [clientId, setClientId] = useState('')
   const [amount, setAmount] = useState('')
   const [category, setCategory] = useState('')
   const [note, setNote] = useState('')
@@ -34,7 +35,7 @@ function TxnSheet({ onClose }: { onClose: () => void }) {
         onSubmit={(e) => {
           e.preventDefault()
           if (!(value > 0)) return
-          update((d) => addTxn(d, { kind, amount: value, date, category: category || cats[cats.length - 1], note: note.trim() }))
+          update((d) => addTxn(d, { kind, amount: value, date, category: category || cats[cats.length - 1], note: note.trim(), ...(clientId ? { clientId } : {}) }))
           onClose()
         }}
       >
@@ -54,6 +55,14 @@ function TxnSheet({ onClose }: { onClose: () => void }) {
           </label>
           <label className="lab">Note<input className="field" value={note} onChange={(e) => setNote(e.target.value)} placeholder="optional" /></label>
         </div>
+        {data.clients.length > 0 && (
+          <label className="lab">{kind === 'income' ? 'Received from' : 'Spent for'}
+            <select className="field" value={clientId} onChange={(e) => setClientId(e.target.value)}>
+              <option value="">No client</option>
+              {[...data.clients].sort((a, b) => a.name.localeCompare(b.name)).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </label>
+        )}
         <button className="btn" style={{ marginTop: 8 }} disabled={!(value > 0)}>Save</button>
       </form>
     </Sheet>
@@ -185,17 +194,20 @@ export function Money() {
           <div className="empty"><b>Quiet month</b>Nothing recorded yet.</div>
         ) : (
           <div className="hairs">
-            {rows.map((t) => (
+            {rows.map((t) => {
+              const who = data.clients.find((c) => c.id === txnClient(data, t))
+              return (
               <div key={t.id} className="item">
                 <span className="faint small" style={{ width: 56 }}>{smallDate(t.date)}</span>
                 <div className="grow">
                   <div className="title">{t.note || t.category}</div>
-                  <div className="faint small">{t.category}</div>
+                  <div className="faint small">{t.category}{who && ` · ${who.name}`}</div>
                 </div>
                 <span className={`num ${t.kind === 'income' ? 'pos' : ''}`}>{t.kind === 'income' ? '+' : '−'}{money(t.amount)}</span>
                 <button className="icon-btn" aria-label="Delete" onClick={() => update((d) => deleteTxn(d, t.id))}><IconClose /></button>
               </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>
