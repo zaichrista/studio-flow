@@ -829,3 +829,188 @@ label.lab { display: grid; gap: 6px; font-size: 13px; color: var(--ink-soft); }
 .blk .grip::after { content: ''; position: absolute; left: 50%; bottom: 3px; width: 18px; height: 3px; margin-left: -9px; border-radius: 3px; background: color-mix(in srgb, var(--c) 70%, transparent); opacity: 0; transition: opacity var(--t-fast) var(--ease); }
 .blk.evt:hover .grip::after, .blk.evt:focus-visible .grip::after { opacity: 1; }
 @media (hover: none) { .blk.evt .grip::after { opacity: .7; } }
+
+/* Budget */
+.bill-row { display: grid; grid-template-columns: 1fr 90px 64px 40px; gap: 8px; align-items: center; }
+.ledger { display: grid; gap: 2px; }
+.ledger > div { display: flex; justify-content: space-between; gap: 12px; padding: 9px 2px; border-bottom: 1px solid var(--line, rgba(128,128,128,.18)); }
+.ledger > div:last-child { border-bottom: 0; }
+.ledger .total { font-weight: 700; font-size: 1.05em; padding-top: 14px; border-top: 2px solid currentColor; border-bottom: 0; margin-top: 6px; }
+
+/* Lanes: the day job and freelance */
+:root { --job: #5d7fa8; --job-wash: #e3ebf5; --free: #55705f; }
+:root[data-theme="dark"] { --job: #86a6cf; --job-wash: #232c38; --free: #a2b6a7; }
+.day .band { position: absolute; left: 0; right: 0; pointer-events: none; }
+.day .band span { position: absolute; top: 4px; left: 8px; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; font-weight: 600; }
+.day .band.job { background: color-mix(in srgb, var(--job) 9%, transparent); }
+.day .band.job span { color: var(--job); }
+.day .band.free { background: color-mix(in srgb, var(--free) 8%, transparent); }
+.day .band.free span { color: var(--free); }
+.blk.job { box-shadow: inset 4px 0 0 var(--job); }
+.blk.flash { animation: flash 1s ease-in-out 2; }
+@keyframes flash { 50% { box-shadow: 0 0 0 4px var(--clay); } }
+.chip.job { background: var(--job-wash); color: var(--job); }
+.tray { margin: 0 0 24px; padding: 16px 18px; border-radius: var(--radius-sm); background: var(--clay-wash); display: grid; gap: 10px; }
+.tray-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.tray-chips .chip { cursor: pointer; border: 0; }
+.slot-chip { cursor: pointer; border: 0; font: inherit; }
+.lane-tag { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--job); }
+.lane-tag.free { color: var(--free); }
+.view-seg { margin-bottom: 22px; }
+
+/* On the clock */
+.onclock { display: grid; gap: 16px; margin: 0 0 28px; }
+.onclock .due { display: flex; gap: 14px; align-items: center; padding: 16px 20px; border-radius: var(--radius-sm); background: var(--job-wash); font-weight: 600; }
+.onclock .due.level-1 { background: var(--clay-wash); }
+.onclock .due.level-2 { background: var(--warn); color: #fff; animation: pulse 1.6s ease-in-out infinite; }
+.onclock .due.level-2 .btn { background: #fff; color: var(--warn); }
+@keyframes pulse { 50% { filter: brightness(1.12); } }
+.score { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.score > div { padding: 14px 16px; border-radius: var(--radius-sm); background: var(--surface); box-shadow: var(--shadow); }
+.score .wide { grid-column: 1 / -1; }
+.score .n { font: 700 28px/1.1 var(--sans); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.score .n span { font-size: 15px; font-weight: 500; color: var(--ink-soft); }
+.score .l { font-size: 12px; color: var(--ink-soft); margin-top: 2px; }
+.score .bad .n { color: var(--warn); }
+.musts { display: grid; gap: 10px; }
+.must-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.must { border: 2px solid var(--hair); background: var(--surface); color: var(--ink); padding: 8px 14px; border-radius: 999px; font: inherit; font-weight: 500; cursor: pointer; }
+.must.job { border-color: color-mix(in srgb, var(--job) 40%, var(--hair)); }
+.must.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.must:disabled { opacity: .4; cursor: default; }
+.verdict { font-weight: 600; padding: 8px 0; }
+.verdict.bad { color: var(--warn); }
+.dock .navbtn.gear { padding: 8px 12px; }
+.day .band.free span { left: auto; right: 8px; }
+
+/* ---------- the sky: a wallpaper that follows the sun ---------- */
+@property --sky-top { syntax: '<color>'; inherits: true; initial-value: #a6d0f2; }
+@property --sky-bottom { syntax: '<color>'; inherits: true; initial-value: #eaf4fb; }
+html[data-sky="on"] body { background: transparent; }
+.sky {
+  position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden;
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--sky-top) var(--sky-mix, 60%), var(--bg)) 0%,
+    color-mix(in srgb, var(--sky-bottom) var(--sky-mix, 60%), var(--bg)) 100%);
+}
+.sky .orb {
+  position: absolute; width: 120px; height: 120px; border-radius: 50%;
+  left: calc(var(--ox) * 1%); bottom: calc(var(--oy) * 1%); translate: -50% 0;
+  transition: left 120s linear, bottom 120s linear; filter: blur(10px);
+  animation: orb-breathe 14s ease-in-out infinite alternate;
+}
+.sky.sun .orb { background: radial-gradient(circle, #fffbe8 0 18%, rgb(255 226 150 / .75) 42%, rgb(255 190 110 / .25) 68%, transparent 72%); box-shadow: 0 0 160px 70px rgb(255 214 140 / .22); opacity: .55; }
+.sky.phase-golden .orb, .sky.phase-sunset .orb { background: radial-gradient(circle, #fff0d2 0 16%, rgb(255 176 110 / .75) 42%, rgb(255 120 90 / .28) 68%, transparent 72%); box-shadow: 0 0 180px 80px rgb(255 140 90 / .26); }
+.sky.moon .orb { width: 80px; height: 80px; filter: blur(3px); background: #f4efdc; box-shadow: 0 0 80px 24px rgb(230 225 255 / .16), inset -20px -8px 0 0 rgb(40 38 70 / .2); opacity: .4; }
+@keyframes orb-breathe { from { scale: .96; } to { scale: 1.06; } }
+.sky .stars {
+  position: absolute; inset: 0; opacity: calc(var(--stars) * .9); transition: opacity 30s linear;
+  background:
+    radial-gradient(1.5px 1.5px at 12% 18%, #fff 50%, transparent 51%), radial-gradient(1px 1px at 28% 42%, #fff 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 41% 12%, #fff 50%, transparent 51%), radial-gradient(1px 1px at 55% 33%, #fff 50%, transparent 51%),
+    radial-gradient(2px 2px at 67% 20%, #fff 50%, transparent 51%), radial-gradient(1px 1px at 78% 48%, #fff 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 88% 14%, #fff 50%, transparent 51%), radial-gradient(1px 1px at 20% 62%, #fff 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 46% 58%, #fff 50%, transparent 51%), radial-gradient(1px 1px at 92% 66%, #fff 50%, transparent 51%),
+    radial-gradient(1px 1px at 6% 80%, #fff 50%, transparent 51%), radial-gradient(1.5px 1.5px at 72% 78%, #fff 50%, transparent 51%);
+  animation: twinkle 7s ease-in-out infinite alternate;
+}
+@keyframes twinkle { from { filter: brightness(.7); } to { filter: brightness(1.25); } }
+/* Soft hills along the bottom, a little Animal Crossing. */
+.sky .hills {
+  position: absolute; left: -5%; right: -5%; bottom: -2px; height: 22vh;
+  background:
+    radial-gradient(120% 100% at 18% 100%, color-mix(in srgb, var(--sage) 30%, transparent) 0 55%, transparent 56%),
+    radial-gradient(110% 100% at 78% 100%, color-mix(in srgb, var(--sage-deep) 22%, transparent) 0 52%, transparent 53%);
+  opacity: .5;
+}
+@media (prefers-reduced-motion: reduce) { .sky .stars, .sky .orb { animation: none; } .sky .orb { transition: none; } }
+
+/* ---------- today: open and personal ---------- */
+.hello { margin-bottom: 8px; }
+.hello h1 { font-size: clamp(38px, 6vw, 58px); margin: 14px 0 8px; }
+.hello .zen { margin: 0 0 18px; }
+.why { display: block; text-align: left; font: 300 20px/1.4 var(--serif); color: var(--ink); max-width: 40ch; margin: 0 0 22px; }
+.why.said span { display: block; font: 500 11px/1 var(--sans); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-faint); margin-bottom: 6px; }
+.why.blank { font: italic 300 18px/1.4 var(--serif); color: var(--ink-faint); }
+.why .say { width: 100%; border: 0; border-bottom: 1px solid var(--hair); background: none; font: inherit; padding: 4px 0 8px; outline: none; }
+.arriving { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.mood { padding: 7px 14px; border-radius: 999px; font-size: 14px; color: var(--ink-soft); box-shadow: inset 0 0 0 1px var(--hair); transition: background var(--t-med) var(--ease), color var(--t-med) var(--ease); }
+.mood:hover { background: color-mix(in srgb, var(--raised) 70%, transparent); }
+.mood.on { background: var(--clay-wash); color: var(--ink); box-shadow: inset 0 0 0 1px var(--clay); }
+.reply { margin: 10px 0 0; color: var(--ink-soft); max-width: 48ch; }
+.linkish { color: var(--sage-deep); text-decoration: underline; text-underline-offset: 3px; }
+.hello .intention { margin: 22px 0 0; padding: 18px 0 4px; border-bottom: 0; border-top: 1px solid color-mix(in srgb, var(--ink) 8%, transparent); }
+.today-lede { margin: 18px 0 26px; }
+/* Fewer boxes: Today's gentler parts sit on the sky, not in cards. */
+.page.today :is(.care, .arc) { background: none; box-shadow: none; padding-left: 0; padding-right: 0; border-radius: 0; border-top: 1px solid color-mix(in srgb, var(--ink) 8%, transparent); }
+.page.today .care-chip, .page.today .breathe-btn { background: color-mix(in srgb, var(--raised) 55%, transparent); }
+
+/* ---------- stillness ---------- */
+.stillness { margin: 4px 0 30px; padding: 24px 0 6px; border-top: 1px solid color-mix(in srgb, var(--ink) 8%, transparent); }
+.still-msg { font: 300 clamp(24px, 3.4vw, 32px)/1.3 var(--serif); letter-spacing: -0.01em; margin: 10px 0 20px; max-width: 26ch; }
+.stillness.off .still-msg { font-size: clamp(28px, 4.2vw, 40px); }
+.still-week { display: flex; align-items: center; gap: 6px; margin-top: 20px; flex-wrap: wrap; }
+.dot-day { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; color: var(--ink-faint); box-shadow: inset 0 0 0 1px var(--hair); }
+.dot-day.on { background: var(--sage); color: #fff; box-shadow: none; }
+.dot-day.today { box-shadow: inset 0 0 0 1.5px var(--ink-soft); }
+.dot-day.on.today { box-shadow: 0 0 0 2px var(--bg), 0 0 0 3.5px var(--sage); }
+.still-week .small { margin-left: 8px; }
+.off-ideas { list-style: none; padding: 0; margin: 22px 0 4px; display: grid; gap: 8px; color: var(--ink-soft); }
+.off-ideas li { padding-left: 22px; position: relative; font: 300 18px/1.4 var(--serif); }
+.off-ideas li::before { content: ''; position: absolute; left: 4px; top: .6em; width: 7px; height: 7px; border-radius: 50%; background: var(--clay); opacity: .7; }
+.lung.still { animation: none; width: 150px; height: 150px; }
+.breathe.sit .sit-line { font: 300 20px/1.45 var(--serif); max-width: 28ch; margin: 0; min-height: 3em; animation: fade-in 1.4s var(--ease-soft); }
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+.chip.tiny { margin-left: 8px; font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--sage-wash); color: var(--sage-deep); }
+
+/* ---------- night ---------- */
+.nightnote {
+  display: flex; gap: 18px; align-items: flex-start; margin: 4px 0 28px; padding: 20px 22px; border-radius: var(--radius);
+  background: color-mix(in srgb, var(--raised) 72%, transparent); box-shadow: inset 0 0 0 1px var(--hair);
+  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+}
+.nightnote .moon { flex: none; width: 34px; height: 34px; border-radius: 50%; background: #f4efdc; box-shadow: inset -9px -4px 0 0 rgb(60 56 100 / .35), 0 0 24px 4px rgb(230 225 255 / .25); margin-top: 4px; }
+.night-msg { font: 300 22px/1.4 var(--serif); margin: 0; max-width: 34ch; }
+.nightnote.hushed { padding: 12px 18px; align-items: center; color: var(--ink-soft); }
+.nightnote.hushed .moon { width: 20px; height: 20px; margin: 0; box-shadow: inset -5px -2px 0 0 rgb(60 56 100 / .35); }
+
+/* ---------- the sweep ---------- */
+.sweep .prompts { display: flex; flex-wrap: wrap; gap: 8px; }
+.sweep .pick { padding: 8px 14px; border-radius: 999px; font-size: 14px; color: var(--ink-soft); background: var(--surface); box-shadow: inset 0 0 0 1px var(--hair); transition: background var(--t-med) var(--ease), color var(--t-med) var(--ease); }
+.sweep .pick.on { background: var(--clay-wash); color: var(--ink); box-shadow: inset 0 0 0 1px var(--clay); }
+.sweep-in { display: flex; align-items: center; gap: 10px; }
+.sweep-in .say { flex: 1; min-width: 0; font: 300 24px/1.3 var(--serif); border: 0; border-bottom: 1px solid var(--hair); background: none; padding: 8px 0 10px; outline: none; }
+.sweep-in .say::placeholder { color: var(--ink-faint); }
+.mic { flex: none; width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; background: var(--surface); box-shadow: inset 0 0 0 1px var(--hair); }
+.mic i { width: 12px; height: 18px; border-radius: 6px; background: var(--ink-soft); position: relative; }
+.mic i::after { content: ''; position: absolute; left: -4px; right: -4px; top: 8px; height: 10px; border: 1.8px solid var(--ink-soft); border-top: 0; border-radius: 0 0 10px 10px; }
+.mic.on { background: var(--clay-wash); box-shadow: inset 0 0 0 1.5px var(--clay); animation: pulse 1.6s ease-in-out infinite; }
+@keyframes pulse { 50% { transform: scale(1.06); } }
+.thoughts { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; max-height: 38vh; overflow: auto; }
+.thought { display: flex; align-items: center; gap: 10px; padding: 10px 12px 10px 16px; border-radius: var(--radius-sm); background: var(--surface); box-shadow: inset 0 0 0 1px var(--hair); animation: fade-in .4s var(--ease); }
+.thought .kind { flex: none; font-size: 12px; font-weight: 500; padding: 5px 11px; border-radius: 999px; background: var(--sage-wash); color: var(--sage-deep); }
+.thought .kind.idea { background: var(--sand); color: var(--ink-soft); }
+.thought .kind.spend { background: var(--clay-wash); color: var(--warn); }
+.thought .kind.worry { background: color-mix(in srgb, var(--mist) 28%, transparent); color: var(--ink-soft); }
+
+/* ---------- follow the sun: the whole page is dyed by the hour ---------- */
+@property --sun-a { syntax: '<color>'; inherits: true; initial-value: #ffb000; }
+@property --sun-b { syntax: '<color>'; inherits: true; initial-value: #ff8a1f; }
+:root[data-sun="on"] {
+  --bg: var(--sky-bottom); --clay: var(--sun-a); --sage: var(--sun-b);
+  --clay-wash: color-mix(in srgb, var(--sun-a) 26%, transparent); --sage-wash: color-mix(in srgb, var(--sun-b) 22%, transparent);
+  --mist: color-mix(in srgb, var(--sun-b) 60%, #fff); --sand: color-mix(in srgb, var(--sun-a) 18%, transparent);
+}
+:root[data-sun="on"][data-theme="light"] {
+  --surface: rgb(255 251 240 / .62); --raised: rgb(255 252 244 / .78); --ink: #34200a; --ink-soft: #5e3d17; --ink-faint: #85592a;
+  --hair: rgb(120 70 10 / .16); --sage-deep: #a84a00; --warn: #c2410c;
+  --shadow: 0 1px 2px rgb(150 80 0 / .06), 0 16px 44px rgb(190 100 0 / .14);
+}
+:root[data-sun="on"][data-theme="dark"] {
+  --surface: rgb(36 24 48 / .5); --raised: rgb(48 32 60 / .62); --ink: #fff1d6; --ink-soft: #e3c9a0; --ink-faint: #b49a80;
+  --hair: rgb(255 220 160 / .16); --sage-deep: #ffd08a; --warn: #ffab7a;
+  --shadow: 0 1px 2px rgb(0 0 0 / .2), 0 16px 44px rgb(20 10 40 / .3);
+}
+:root[data-sun="on"][data-theme="dark"] .btn { color: #2a1a0a; }
+:root[data-sun="on"] .sky .hills { background: radial-gradient(120% 100% at 18% 100%, color-mix(in srgb, var(--sun-b) 32%, transparent) 0 55%, transparent 56%), radial-gradient(110% 100% at 78% 100%, color-mix(in srgb, var(--sun-a) 28%, transparent) 0 52%, transparent 53%); }
+:root[data-sun="on"] .btn.clay, :root[data-sun="on"] .capture-fab { color: #3a1a00; }

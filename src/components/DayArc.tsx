@@ -1,5 +1,5 @@
 import { fmtDuration, fromMin, iso, nowMinutes, toMin } from '../lib/dates'
-import { eventsOn } from '../lib/scheduler'
+import { allWindows, eventsOn } from '../lib/scheduler'
 import { useStore } from '../lib/store'
 
 const W = 1000
@@ -17,8 +17,10 @@ export function DayArc({ closed }: { closed: boolean }) {
   const { data } = useStore()
   const s = data.settings
   const today = iso()
-  const from = toMin(s.dayStart)
-  const to = toMin(s.dayEnd)
+  // The whole day's work, first window to last: with a job that runs from 9 to the end of your evening.
+  const wins = allWindows(today, s)
+  const from = wins.length ? wins[0].from : toMin(s.dayStart)
+  const to = wins.length ? wins[wins.length - 1].to : toMin(s.dayEnd)
   const now = nowMinutes()
   // Working late stretches the arc past sunset, so overtime is seen, not hidden.
   const lateEntries = data.entries
@@ -54,7 +56,7 @@ export function DayArc({ closed }: { closed: boolean }) {
     : closed
     ? 'The work day is put away. The rest of the light is yours.'
     : before
-      ? `Your work day rises at ${s.dayStart}. No rush yet.`
+      ? `Your work day rises at ${fromMin(from)}. No rush yet.`
       : after
         ? 'The work day has set. Put it away when you’re ready.'
         : `${fmtDuration((to - now) * 60)} of light left in your work day${leftToday ? `, ${fmtDuration(leftToday * 60)} of it planned` : ''}.`
@@ -97,7 +99,7 @@ export function DayArc({ closed }: { closed: boolean }) {
           <>
             <path d={along(tEnd, t(Math.min(lastLate, end)))} className="over" />
             <line x1={pt(tEnd)[0]} x2={pt(tEnd)[0]} y1={pt(tEnd)[1] - 14} y2={pt(tEnd)[1] + 14} className="sunset" />
-            <text x={pt(tEnd)[0]} y={pt(tEnd)[1] - 22} className="lbl mid">{s.dayEnd}</text>
+            <text x={pt(tEnd)[0]} y={pt(tEnd)[1] - 22} className="lbl mid">{fromMin(to)}</text>
           </>
         )}
         <line x1={L - 30} x2={R + 30} y1={BASE} y2={BASE} className="horizon" />
@@ -113,8 +115,8 @@ export function DayArc({ closed }: { closed: boolean }) {
             <path d="M8 -12a14 14 0 1 0 6 22a11 11 0 0 1 -6 -22Z" className="disc" />
           </g>
         )}
-        <text x={L} y={BASE + 30} className="lbl">{s.dayStart}</text>
-        <text x={R} y={BASE + 30} className="lbl end">{end > to ? fromMin(end) : s.dayEnd}</text>
+        <text x={L} y={BASE + 30} className="lbl">{fromMin(from)}</text>
+        <text x={R} y={BASE + 30} className="lbl end">{fromMin(end)}</text>
       </svg>
       <p className="arc-caption">{caption}</p>
     </section>

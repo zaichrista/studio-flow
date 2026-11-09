@@ -1,17 +1,18 @@
 import { describe, expect, it } from 'vitest'
 import type { AppData } from '../types'
-import { addTask, applySorted, closeDay, emptyData, ideaToTask, markPaid, reopenDay, saveProject, sendInvoice, startTimer, stopTimer } from './actions'
+import { addTask, applySorted, closeDay, ideaToTask, markPaid, reopenDay, saveProject, sendInvoice, startTimer, stopTimer } from './actions'
+import { noJobData } from './fixtures'
 import { buildReminders, startHint } from './push'
 import { estimateRatio, invoiceDue, nextTaxDay, taxSetAside, taxYear } from './stats'
 
 // Monday 2026-10-19, 08:00 local
 const monday8 = new Date(2026, 9, 19, 8, 0)
 
-const withProject = (pay = 800): AppData => saveProject(emptyData(), { name: 'Maya logo', pay })
+const withProject = (pay = 800): AppData => saveProject(noJobData(), { name: 'Maya logo', pay })
 
 describe('ideas', () => {
   it('keeps ideas from a sorted dump, on their project or loose', () => {
-    const d = applySorted(emptyData(), {
+    const d = applySorted(noJobData(), {
       projects: [{ name: 'Maya logo', tasks: [], ideas: ['serif wordmark'] }],
       ideas: ['risograph zine'],
     }, monday8)
@@ -21,7 +22,7 @@ describe('ideas', () => {
   })
 
   it('turns an idea into a scheduled task', () => {
-    const d = applySorted(emptyData(), { projects: [], ideas: ['risograph zine'] }, monday8)
+    const d = applySorted(noJobData(), { projects: [], ideas: ['risograph zine'] }, monday8)
     const next = ideaToTask(d, d.ideas[0].id, monday8)
     expect(next.ideas).toHaveLength(0)
     expect(next.tasks[0].title).toBe('risograph zine')
@@ -31,12 +32,12 @@ describe('ideas', () => {
 
 describe('honest estimates', () => {
   it('pads a task to match how long things really take', () => {
-    const d = addTask(emptyData(), { projectId: null, title: 'Moodboard', estimateMinutes: 60, pad: 1.4 }, monday8)
+    const d = addTask(noJobData(), { projectId: null, title: 'Moodboard', estimateMinutes: 60, pad: 1.4 }, monday8)
     expect(d.tasks[0].estimateMinutes).toBe(90)
   })
 
   it('learns the ratio from finished, timed tasks', () => {
-    let d = emptyData()
+    let d = noJobData()
     for (let i = 0; i < 3; i++) {
       d = addTask(d, { projectId: null, title: `T${i}`, estimateMinutes: 60 }, monday8)
       const id = d.tasks[i].id
@@ -47,7 +48,7 @@ describe('honest estimates', () => {
   })
 
   it('stays quiet until there are three tasks to learn from', () => {
-    expect(estimateRatio(emptyData())).toBeNull()
+    expect(estimateRatio(noJobData())).toBeNull()
   })
 })
 
@@ -78,14 +79,14 @@ describe('tax', () => {
   })
 
   it('sets aside the chosen share of income', () => {
-    const d = { ...emptyData(), txns: [{ id: 'a', kind: 'income' as const, amount: 800, date: '2026-10-12', category: 'Client work', note: '' }] }
+    const d = { ...noJobData(), txns: [{ id: 'a', kind: 'income' as const, amount: 800, date: '2026-10-12', category: 'Client work', note: '' }] }
     expect(taxSetAside(d, '2026-10-01', '2026-10-31')).toBe(200)
   })
 })
 
 describe('putting the day away', () => {
   it('moves the rest of today to another day and keeps today clear', () => {
-    const d = addTask(emptyData(), { projectId: null, title: 'Logo', estimateMinutes: 60, dueDate: '2026-10-19' }, monday8)
+    const d = addTask(noJobData(), { projectId: null, title: 'Logo', estimateMinutes: 60, dueDate: '2026-10-19' }, monday8)
     expect(d.blocks[0].date).toBe('2026-10-19')
     const closed = closeDay(d, monday8)
     expect(closed.closedOn).toBe('2026-10-19')
@@ -96,7 +97,7 @@ describe('putting the day away', () => {
   })
 
   it('stops a running timer and keeps the time', () => {
-    let d = addTask(emptyData(), { projectId: null, title: 'Logo', estimateMinutes: 60, dueDate: '2026-10-19' }, monday8)
+    let d = addTask(noJobData(), { projectId: null, title: 'Logo', estimateMinutes: 60, dueDate: '2026-10-19' }, monday8)
     const at9 = new Date(2026, 9, 19, 9, 0)
     d = startTimer(d, d.tasks[0].id, d.blocks[0].id, at9)
     const closed = closeDay(d, new Date(2026, 9, 19, 9, 30))
@@ -108,8 +109,8 @@ describe('putting the day away', () => {
 
 describe('reminders', () => {
   it('sends a heads-up and a start nudge naming the first step', () => {
-    let d = addTask(emptyData(), { projectId: null, title: 'Moodboard', estimateMinutes: 60, firstStep: 'Open Pinterest board', dueDate: '2026-10-19' }, monday8)
-    d = { ...d, settings: { ...d.settings, shutdownNudge: false } }
+    let d = addTask(noJobData(), { projectId: null, title: 'Moodboard', estimateMinutes: 60, firstStep: 'Open Pinterest board', dueDate: '2026-10-19' }, monday8)
+    d = { ...d, settings: { ...d.settings, shutdownNudge: false, tone: 'gentle' } }
     const r = buildReminders(d, monday8.getTime()).filter((x) => !x.id.startsWith('tax:'))
     expect(r.map((x) => x.id.split(':')[0])).toEqual(['soon', 'block'])
     expect(r[0].title).toBe('In 10 minutes: Moodboard')
@@ -122,7 +123,7 @@ describe('reminders', () => {
   })
 
   it('goes quiet for a day that has been put away', () => {
-    const d = closeDay(addTask(emptyData(), { projectId: null, title: 'Logo', estimateMinutes: 60, dueDate: '2026-10-19' }, monday8), monday8)
+    const d = closeDay(addTask(noJobData(), { projectId: null, title: 'Logo', estimateMinutes: 60, dueDate: '2026-10-19' }, monday8), monday8)
     const r = buildReminders(d, monday8.getTime())
     expect(r.some((x) => new Date(x.at).getDate() === 19)).toBe(false)
   })
@@ -138,7 +139,7 @@ describe('reminders', () => {
   })
 
   it('warns before the timed block ends', () => {
-    let d = addTask(emptyData(), { projectId: null, title: 'Logo', estimateMinutes: 60, dueDate: '2026-10-19' }, monday8)
+    let d = addTask(noJobData(), { projectId: null, title: 'Logo', estimateMinutes: 60, dueDate: '2026-10-19' }, monday8)
     const at9 = new Date(2026, 9, 19, 9, 0)
     d = startTimer(d, d.tasks[0].id, d.blocks[0].id, at9)
     const r = buildReminders(d, at9.getTime())
@@ -161,7 +162,7 @@ describe('less friction', () => {
   })
 
   it('puts focus work in the clearest hours and admin in the other half', () => {
-    let d = addTask(emptyData(), { projectId: null, title: 'Reply to emails', dueDate: '2026-10-19' }, monday8)
+    let d = addTask(noJobData(), { projectId: null, title: 'Reply to emails', dueDate: '2026-10-19' }, monday8)
     d = addTask(d, { projectId: null, title: 'Final logo artwork', estimateMinutes: 60, dueDate: '2026-10-19' }, monday8)
     const at = (title: string) => d.blocks.find((b) => b.taskId === d.tasks.find((t) => t.title === title)!.id)!
     expect(at('Final logo artwork').start).toBe('09:00')
@@ -171,7 +172,7 @@ describe('less friction', () => {
   })
 
   it('flips the halves for an afternoon person', () => {
-    const base = { ...emptyData(), settings: { ...emptyData().settings, clearest: 'afternoon' as const } }
+    const base = { ...noJobData(), settings: { ...noJobData().settings, clearest: 'afternoon' as const } }
     const d = addTask(base, { projectId: null, title: 'Final logo artwork', estimateMinutes: 60, dueDate: '2026-10-19' }, monday8)
     expect(d.blocks[0].start).toBe('14:00')
   })
@@ -179,7 +180,7 @@ describe('less friction', () => {
   it('moves a block at least an hour on with "not now"', async () => {
     const { snoozeBlock } = await import('./actions')
     const at9 = new Date(2026, 9, 19, 9, 0)
-    const d = addTask(emptyData(), { projectId: null, title: 'Final logo artwork', estimateMinutes: 60, dueDate: '2026-10-21' }, at9)
+    const d = addTask(noJobData(), { projectId: null, title: 'Final logo artwork', estimateMinutes: 60, dueDate: '2026-10-21' }, at9)
     const moved = snoozeBlock(d, d.blocks[0].id, at9)
     expect(moved.blocks[0].date).toBe('2026-10-19')
     expect(moved.blocks[0].start >= '10:00').toBe(true)
@@ -187,7 +188,7 @@ describe('less friction', () => {
 
   it('captures and places a thought in one go', async () => {
     const { quickCapture } = await import('./actions')
-    const d = quickCapture(emptyData(), 'Reply to Maya tomorrow\nidea: neon sign', monday8)
+    const d = quickCapture(noJobData(), 'Reply to Maya tomorrow\nidea: neon sign', monday8)
     expect(d.tasks.map((t) => t.title)).toEqual(['Reply to Maya'])
     expect(d.tasks[0].dueDate).toBe('2026-10-20')
     expect(d.blocks[0].date).not.toBe('')
@@ -196,7 +197,7 @@ describe('less friction', () => {
   })
 
   it('checks in after "just 10 minutes"', () => {
-    let d = addTask(emptyData(), { projectId: null, title: 'Final logo artwork', estimateMinutes: 60, dueDate: '2026-10-19' }, monday8)
+    let d = addTask(noJobData(), { projectId: null, title: 'Final logo artwork', estimateMinutes: 60, dueDate: '2026-10-19' }, monday8)
     const at9 = new Date(2026, 9, 19, 9, 0)
     d = startTimer(d, d.tasks[0].id, d.blocks[0].id, at9, 10)
     const trial = buildReminders(d, at9.getTime()).find((r) => r.id === 'trial')!
@@ -221,7 +222,7 @@ describe('moving tasks between projects', () => {
 describe('editing a task later', () => {
   it('re-plans when the hours change, keeping time already worked', async () => {
     const { editTask } = await import('./actions')
-    let d = addTask(emptyData(), { projectId: null, title: 'Final logo artwork', estimateMinutes: 120, dueDate: '2026-10-21' }, monday8)
+    let d = addTask(noJobData(), { projectId: null, title: 'Final logo artwork', estimateMinutes: 120, dueDate: '2026-10-21' }, monday8)
     d = { ...d, blocks: d.blocks.map((b, i) => (i === 0 ? { ...b, done: true } : b)) }
     d = editTask(d, d.tasks[0].id, { estimateMinutes: 240, title: 'Final logo files' }, monday8)
     expect(d.tasks[0]).toMatchObject({ title: 'Final logo files', estimateMinutes: 240 })
@@ -233,7 +234,7 @@ describe('editing a task later', () => {
 
   it('moves blocks to fit a new due date', async () => {
     const { editTask } = await import('./actions')
-    let d = addTask(emptyData(), { projectId: null, title: 'Final logo artwork', estimateMinutes: 180, dueDate: '2026-10-23' }, monday8)
+    let d = addTask(noJobData(), { projectId: null, title: 'Final logo artwork', estimateMinutes: 180, dueDate: '2026-10-23' }, monday8)
     d = editTask(d, d.tasks[0].id, { dueDate: '2026-10-19' }, monday8)
     expect(d.tasks[0].dueDate).toBe('2026-10-19')
     expect(d.blocks.every((b) => b.date === '2026-10-19')).toBe(true)
@@ -241,7 +242,7 @@ describe('editing a task later', () => {
 
   it('renames and removes steps', async () => {
     const { renameSubtask, deleteSubtask } = await import('./actions')
-    let d = addTask(emptyData(), { projectId: null, title: 'Moodboard', subtasks: ['Collect', 'Pick palette'] }, monday8)
+    let d = addTask(noJobData(), { projectId: null, title: 'Moodboard', subtasks: ['Collect', 'Pick palette'] }, monday8)
     const [a, b] = d.tasks[0].subtasks
     d = renameSubtask(d, d.tasks[0].id, a.id, 'Collect references')
     d = deleteSubtask(d, d.tasks[0].id, b.id)

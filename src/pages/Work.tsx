@@ -5,9 +5,13 @@ import { Sheet } from '../components/Sheet'
 import { toast } from '../components/Toast'
 import { addSubtask, addTask, clientNamed, deleteProject, deleteTask, markPaid, patchTask, saveProject, sendInvoice, toggleSubtask, toggleTask, unsendInvoice } from '../lib/actions'
 import { fmtDuration, iso, smallDate } from '../lib/dates'
+import { jumpToBlock, slotLabel } from '../lib/slots'
+import { laneOf } from '../lib/scheduler'
+import { Board } from './Board'
+import type { PageId } from '../App'
 import { clientStats, effectiveRate, estimateRatio, invoiceDue, money, projectSeconds, readyToInvoice, taskProgress, taskSeconds } from '../lib/stats'
 import { useStore } from '../lib/store'
-import type { Client, Project, Task, TaskKind } from '../types'
+import type { Client, Lane, Project, Task, TaskKind } from '../types'
 import { ClientSheet } from '../components/ClientSheet'
 import { useStart } from '../components/RestGuard'
 import { Seg } from '../components/Fields'
@@ -17,7 +21,7 @@ import { StepEdit, TaskEdit } from '../components/TaskEdit'
 import { kindOf, KIND_LABEL } from '../lib/kind'
 import { splitEstimate } from '../lib/estimate'
 
-function TaskRow({ task }: { task: Task }) {
+function TaskRow({ task, go }: { task: Task; go: (p: PageId) => void }) {
   const { data, update } = useStore()
   const begin = useStart()
   const [open, setOpen] = useState(false)
@@ -26,6 +30,7 @@ function TaskRow({ task }: { task: Task }) {
   const spent = taskSeconds(data, task.id)
   const done = task.subtasks.filter((s) => s.done).length
   const overdue = !task.done && task.dueDate < iso()
+  const slot = slotLabel(data, task.id)
 
   return (
     <div>
@@ -40,6 +45,15 @@ function TaskRow({ task }: { task: Task }) {
             <span className={overdue ? 'neg' : ''}>due {smallDate(task.dueDate)}</span>
           </div>
         </button>
+        {slot && (
+          <button
+            className={`chip slot-chip ${slot.blockId && slot.text === 'Waiting for a slot' ? 'clay' : ''}`}
+            onClick={() => { if (slot.blockId) jumpToBlock(slot.blockId); go('week') }}
+            aria-label={`${slot.text}. Show on the calendar`}
+          >
+            {slot.text}
+          </button>
+        )}
         {taskProgress(task) > 0 && !task.done && <span className="chip">{Math.round(taskProgress(task) * 100)}%</span>}
         {!task.done && (
           <button className="icon-btn" aria-label="Start timer" onClick={() => begin(task.id)}>▶</button>
@@ -137,12 +151,14 @@ function Fold({ open, children }: { open: boolean; children: ReactNode }) {
   return <div className={`fold-body ${open ? 'open' : ''}`} aria-hidden={!open}><div>{children}</div></div>
 }
 
-function ProjectSheet({ project, clientId, onClose }: { project?: Project; clientId?: string | null; onClose: () => void }) {
+function ProjectSheet({ project, clientId, lane: startLane, onClose }: { project?: Project; clientId?: string | null; lane?: Lane; onClose: () => void }) {
   const { data, update } = useStore()
   const [name, setName] = useState(project?.name ?? '')
   const [client, setClient] = useState<string>(project?.clientId ?? clientId ?? '')
   const [newClient, setNewClient] = useState('')
   const [pay, setPay] = useState(project?.pay ? String(project.pay) : '')
+  const [lane, setLane] = useState<Lane>(project ? laneOf(project) : startLane ?? 'freelance')
+  const job = data.settings.hasJob && lane === 'job'
   return (
     <Sheet title={project ? 'Edit project' : 'New project'} onClose={onClose}>
       <form
@@ -160,13 +176,19 @@ function ProjectSheet({ project, clientId, onClose }: { project?: Project; clien
                 id = made.id
               } else id = null
             }
-            return saveProject(next, { id: project?.id, name: name.trim(), clientId: id, pay: Math.max(0, Number(pay) || 0) })
+            if (job) return saveProject(next, { id: project?.id, name: name.trim(), clientId: null, pay: 0, lane })
+            return saveProject(next, { id: project?.id, name: name.trim(), clientId: id, pay: Math.max(0, Number(pay) || 0), lane })
           })
           onClose()
         }}
       >
         <label className="lab">Name<input className="field" value={name} onChange={(e) => setName(e.target.value)} autoFocus /></label>
-        <div className="lab-row">
+        {data.settings.hasJob && (
+          <div className="lab">Whose time
+            <Seg<Lane> label="Lane" value={lane} options={[['job', 'Day job'], ['freelance', 'Freelance']]} onChange={setLane} />
+          </div>
+        )}
+        {!job && <div className="lab-row">
           <label className="lab">Client
             <select className="field" value={client} onChange={(e) => setClient(e.target.value)}>
               <option value="">No client</option>
@@ -175,8 +197,8 @@ function ProjectSheet({ project, clientId, onClose }: { project?: Project; clien
             </select>
           </label>
           <label className="lab">Fee for the project (£)<input className="field" inputMode="decimal" value={pay} onChange={(e) => setPay(e.target.value)} placeholder="0" /></label>
-        </div>
-        {client === 'new' && (
+        </div>}
+        {!job && client === 'new' && (
           <label className="lab">Client's name<input className="field" value={newClient} onChange={(e) => setNewClient(e.target.value)} autoFocus /></label>
         )}
         <div className="row" style={{ marginTop: 8 }}>
@@ -270,6 +292,7 @@ function TaskSheet({ onClose }: { onClose: () => void }) {
   const [days, setDays] = useState(String(data.settings.defaultTaskDays))
   const learned = estimateRatio(data)
   const [padIt, setPadIt] = useState(true)
+  const [lane, setLane] = useState<Lane>('freelance')
   const pad = learned && learned.ratio >= 1.15 && padIt ? learned.ratio : undefined
   const planned = Math.max(0.25, Number(hours) || 1) * 60
   return (
@@ -285,8 +308,9 @@ function TaskSheet({ onClose }: { onClose: () => void }) {
             estimateMinutes: planned,
             daysToComplete: Math.max(1, Math.round(Number(days) || d.settings.defaultTaskDays)),
             pad,
+            ...(!projectId && d.settings.hasJob ? { lane } : {}),
           }))
-          toast('Task placed on your calendar.')
+          toast('Booked on your calendar. Check the Calendar tab for when.')
           onClose()
         }}
       >
@@ -296,6 +320,11 @@ function TaskSheet({ onClose }: { onClose: () => void }) {
             <ProjectOptions data={data} />
           </select>
         </label>
+        {!projectId && data.settings.hasJob && (
+          <div className="lab">Whose time
+            <Seg<Lane> label="Lane" value={lane} options={[['job', 'Day job'], ['freelance', 'Freelance']]} onChange={setLane} />
+          </div>
+        )}
         <div className="lab-row">
           <label className="lab">Hours of work<input className="field" inputMode="decimal" value={hours} onChange={(e) => setHours(e.target.value)} /></label>
           <label className="lab">Working days to finish<input className="field" inputMode="numeric" value={days} onChange={(e) => setDays(e.target.value)} /></label>
@@ -312,25 +341,35 @@ function TaskSheet({ onClose }: { onClose: () => void }) {
   )
 }
 
-export function Work() {
+export function Work({ go }: { go: (p: PageId) => void }) {
   const { data, update } = useStore()
   const [folded, toggleFold] = useFolded()
-  const quickTask = (projectId: string | null) => (text: string) => {
+  const [view, setViewState] = useState<'list' | 'board'>(() => {
+    try { return localStorage.getItem('sf-projview') === 'board' ? 'board' : 'list' } catch { return 'list' }
+  })
+  const setView = (v: 'list' | 'board') => {
+    setViewState(v)
+    try { localStorage.setItem('sf-projview', v) } catch { /* fine */ }
+  }
+  const quickTask = (projectId: string | null, lane?: Lane) => (text: string) => {
     const { title, minutes } = splitEstimate(text)
-    update((d) => addTask(d, { projectId, title, estimateMinutes: minutes }))
+    update((d) => addTask(d, { projectId, title, estimateMinutes: minutes, lane }))
     toast(`Added${minutes ? ` (${fmtDuration(minutes * 60)})` : ''} and placed on your calendar.`)
   }
   const quickProject = (clientId: string | null) => (name: string) => update((d) => saveProject(d, { name, clientId }))
   const [taskSheet, setTaskSheet] = useState(false)
-  const [projectSheet, setProjectSheet] = useState<{ project?: Project; clientId?: string | null } | null>(null)
+  const [projectSheet, setProjectSheet] = useState<{ project?: Project; clientId?: string | null; lane?: Lane } | null>(null)
   const [clientSheet, setClientSheet] = useState<{ client?: Client } | null>(null)
   const [invoicing, setInvoicing] = useState<Project | null>(null)
   const learned = estimateRatio(data)
   const [showDone, setShowDone] = useState(false)
   const visible = (t: Task) => showDone || !t.done
-  const loose = data.tasks.filter((t) => t.projectId === null && visible(t))
+  const loose = data.tasks.filter((t) => t.projectId === null && laneOf(t) !== 'job' && visible(t))
+  const jobLoose = data.tasks.filter((t) => t.projectId === null && laneOf(t) === 'job' && visible(t))
+  const jobProjects = data.projects.filter((p) => laneOf(p) === 'job')
+  const showJob = data.settings.hasJob || jobProjects.length > 0 || jobLoose.length > 0
   const finished = data.tasks.filter((t) => t.done).length
-  const noClient = data.projects.filter((p) => !p.clientId || !data.clients.some((c) => c.id === p.clientId))
+  const noClient = data.projects.filter((p) => laneOf(p) !== 'job' && (!p.clientId || !data.clients.some((c) => c.id === p.clientId)))
   // Clients with open work first, then the quiet ones, each alphabetical.
   const clients = [...data.clients].sort((a, b) => {
     const open = (c: Client) => (clientStats(data, c.id).openTasks > 0 ? 0 : 1)
@@ -341,6 +380,7 @@ export function Work() {
     const tasks = data.tasks.filter((t) => t.projectId === p.id && visible(t))
     const secs = projectSeconds(data, p.id)
     const rate = effectiveRate(data, p)
+    const job = laneOf(p) === 'job'
     return (
       <section key={p.id} className="card">
         <div className="row" style={{ alignItems: 'flex-start' }}>
@@ -349,11 +389,11 @@ export function Work() {
             <h2>{p.name}</h2>
             <div className="faint small">{[secs > 0 ? `${fmtDuration(secs)} tracked` : '', rate ? `${money(Math.round(rate))}/hr so far` : '', 'tap to edit'].filter(Boolean).join(' · ')}</div>
           </button>
-          <button className={`chip ${p.pay ? '' : 'clay'}`} onClick={() => setProjectSheet({ project: p })}>{p.pay ? money(p.pay) : 'Set fee'}</button>
+          {job ? <span className="lane-tag">Job</span> : <button className={`chip ${p.pay ? '' : 'clay'}`} onClick={() => setProjectSheet({ project: p })}>{p.pay ? money(p.pay) : 'Set fee'}</button>}
         </div>
-        <PayBar project={p} onInvoice={() => setInvoicing(p)} />
+        {!job && <PayBar project={p} onInvoice={() => setInvoicing(p)} />}
         <div className="hairs" style={{ marginTop: 12 }}>
-          {tasks.map((t) => <TaskRow key={t.id} task={t} />)}
+          {tasks.map((t) => <TaskRow key={t.id} task={t} go={go} />)}
           <QuickAdd placeholder={tasks.length ? 'Add a task' : 'No open tasks. Add one?'} label={`Add a task to ${p.name}`} onAdd={quickTask(p.id)} />
         </div>
       </section>
@@ -364,9 +404,9 @@ export function Work() {
     <div className="page">
       <div className="head">
         <div>
-          <div className="eyebrow">Work</div>
-          <h1>Clients & projects</h1>
-          <p className="lede">The people you work for, what you're making them, and what it pays.</p>
+          <div className="eyebrow">Projects</div>
+          <h1>Everything you're working on</h1>
+          <p className="lede">Your job, your clients, and every task with its place on the calendar.</p>
           {learned && (
             <p className="faint small" style={{ marginTop: 8 }}>
               {learned.ratio >= 1.15
@@ -378,6 +418,7 @@ export function Work() {
           )}
         </div>
         <div className="row" style={{ flexWrap: 'wrap' }}>
+          <Seg<'list' | 'board'> label="View" value={view} options={[['list', 'List'], ['board', 'Board']]} onChange={setView} />
           <button className="btn ghost small" onClick={() => setClientSheet({})}>＋ Client</button>
           <button className="btn ghost small" onClick={() => setProjectSheet({})}>＋ Project</button>
           <button className="btn quiet small" onClick={() => setTaskSheet(true)}>＋ Task</button>
@@ -385,10 +426,30 @@ export function Work() {
       </div>
 
       {data.clients.length === 0 && data.projects.length === 0 && loose.length === 0 && (
-        <div className="empty"><b>Nothing here yet</b>Add a client, or put everything down on the Dump page.</div>
+        <div className="empty"><b>Nothing here yet</b>Add a project, or tap ＋ and put it all down.</div>
       )}
 
-      <div className="stack" style={{ gap: 44 }}>
+      {view === 'board' && <Board embedded />}
+
+      {view === 'list' && <div className="stack" style={{ gap: 44 }}>
+        {showJob && (
+          <section className="client">
+            <div className="client-head plain">
+              <span className="client-who"><span className="name">Day job</span><span className="faint small meta">{data.tasks.filter((t) => laneOf(t) === 'job' && !t.done).length} open · planned 9–5 on job days</span></span>
+              <button className="btn ghost small" onClick={() => setProjectSheet({ lane: 'job' })}>＋ Project</button>
+            </div>
+            <div className="stack" style={{ gap: 18 }}>
+              {jobProjects.map(projectCard)}
+              <section className="card flat">
+                <h2>Job tasks</h2>
+                <div className="hairs" style={{ marginTop: 12 }}>
+                  {jobLoose.map((t) => <TaskRow key={t.id} task={t} go={go} />)}
+                  <QuickAdd placeholder="Add a job task" label="Add a job task" onAdd={quickTask(null, 'job')} />
+                </div>
+              </section>
+            </div>
+          </section>
+        )}
         {clients.map((c) => {
           const st = clientStats(data, c.id)
           return (
@@ -445,21 +506,21 @@ export function Work() {
           <section className="card flat">
             <h2>Everything else</h2>
             <div className="hairs" style={{ marginTop: 12 }}>
-              {loose.map((t) => <TaskRow key={t.id} task={t} />)}
+              {loose.map((t) => <TaskRow key={t.id} task={t} go={go} />)}
               <QuickAdd placeholder="Add a task" label="Add a task with no project" onAdd={quickTask(null)} />
             </div>
           </section>
         )}
-      </div>
+      </div>}
 
-      {finished > 0 && (
+      {finished > 0 && view === 'list' && (
         <div style={{ marginTop: 28, textAlign: 'center' }}>
           <button className="btn ghost small" onClick={() => setShowDone(!showDone)}>{showDone ? 'Hide' : 'Show'} {finished} finished</button>
         </div>
       )}
 
       {taskSheet && <TaskSheet onClose={() => setTaskSheet(false)} />}
-      {projectSheet && <ProjectSheet project={projectSheet.project} clientId={projectSheet.clientId} onClose={() => setProjectSheet(null)} />}
+      {projectSheet && <ProjectSheet project={projectSheet.project} clientId={projectSheet.clientId} lane={projectSheet.lane} onClose={() => setProjectSheet(null)} />}
       {clientSheet && <ClientSheet client={clientSheet.client} onClose={() => setClientSheet(null)} />}
       {invoicing && <InvoiceSheet project={invoicing} onClose={() => setInvoicing(null)} />}
     </div>

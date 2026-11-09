@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { CalEvent, Task } from '../types'
 import {
-  DEFAULT_SETTINGS as S,
   defaultDue,
   eventsOn,
   makeBlocks,
@@ -12,6 +11,7 @@ import {
   weekLoad,
   workDates,
 } from './scheduler'
+import { NO_JOB as S } from './fixtures'
 
 // Monday 2026-10-19, 08:00 local
 const monday8 = new Date(2026, 9, 19, 8, 0)
@@ -153,7 +153,7 @@ describe('breaks', () => {
     const placed = placePending([t], makeBlocks(t, late), late, monday8)
     const today = placed.filter((b) => b.date === '2026-10-19')
     expect(today.length).toBeGreaterThan(8)
-    expect(today.some((b) => overlaps(b, '18:30', '19:30'))).toBe(false)
+    expect(today.some((b) => overlaps(b, '18:00', '19:00'))).toBe(false)
     expect(today.some((b) => overlaps(b, '13:00', '14:00'))).toBe(false)
   })
 

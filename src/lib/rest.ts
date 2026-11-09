@@ -1,6 +1,6 @@
 import type { AppData } from '../types'
-import { fromMin, iso, nowMinutes, toMin } from './dates'
-import { isWorkDay } from './scheduler'
+import { fromMin, iso, nowMinutes } from './dates'
+import { allWindows } from './scheduler'
 
 /** From this time until morning it counts as late at night. */
 const LATE = 22 * 60
@@ -32,14 +32,17 @@ export function restCheck(d: AppData, now: Date = new Date()): RestCheck | null 
   if (d.closedOn === day) {
     return { late: false, title: 'You put today away', body: 'You already closed the day. It’s fine to do a little more, but the evening is yours too.' }
   }
-  if (!isWorkDay(day, s)) {
+  const wins = allWindows(day, s)
+  if (wins.length === 0) {
     return { late: false, title: 'It’s a rest day', body: 'Today isn’t one of your work days. Rest counts as part of the work. Sure you want to start?' }
   }
-  if (m >= toMin(s.dayEnd)) {
-    return { late: false, title: 'Past your work day', body: `Your day ended at ${s.dayEnd}. A little overtime is fine now and then; just don’t let it become the plan.` }
+  const first = wins[0].from
+  const last = wins[wins.length - 1].to
+  if (m >= last) {
+    return { late: false, title: 'Past your work day', body: `Your day ended at ${fromMin(last)}. A little overtime is fine now and then; just don’t let it become the plan.` }
   }
-  if (m < toMin(s.dayStart) - 60) {
-    return { late: false, title: 'Early start', body: `Your day starts at ${s.dayStart}. Have you eaten? Then go gently.` }
+  if (m < first - 60) {
+    return { late: false, title: 'Early start', body: `Your day starts at ${fromMin(first)}. Have you eaten? Then go gently.` }
   }
   return null
 }

@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import { patchTask, snoozeBlock } from '../lib/actions'
+import { deleteTask, patchTask, setStatus, snoozeBlock } from '../lib/actions'
 import { addDays, dayName, fmtDuration, iso, longDate, smallDate } from '../lib/dates'
 import { kindOf, KIND_LABEL } from '../lib/kind'
 import type { TaskKind } from '../types'
@@ -51,13 +51,22 @@ export function BlockSheet({ blockId, onClose }: { blockId: string; onClose: () 
     stopRunning()
     onClose()
   }
+  const others = data.blocks.filter((b) => b.taskId === block.taskId && b.id !== block.id && !b.done)
   const finish = () => {
     update((d) => ({ ...d, blocks: d.blocks.map((b) => (b.id === block.id ? { ...b, done: true } : b)) }))
-    toast('Marked done.')
+    // The last block of a task is the natural moment to finish the task itself.
+    if (task && !task.done && others.length === 0) toast('That was its last block. Is the task finished?', { label: 'Finish task', run: () => update((d) => setStatus(d, task.id, 'done')) })
+    else toast('Marked done.')
     onClose()
   }
+  // Every task keeps at least one block on the calendar, so the only block of a task can't just vanish.
   const remove = () => {
-    update((d) => ({ ...d, blocks: d.blocks.filter((b) => b.id !== block.id) }))
+    if (task && others.length === 0) {
+      if (!confirm(`This is the only block for “${task.title}”. Delete the whole task?`)) return
+      update((d) => deleteTask(d, task.id))
+    } else {
+      update((d) => ({ ...d, blocks: d.blocks.filter((b) => b.id !== block.id) }))
+    }
     onClose()
   }
 
@@ -127,7 +136,7 @@ export function BlockSheet({ blockId, onClose }: { blockId: string; onClose: () 
             <button className="btn quiet" onClick={() => { snooze(block.id); onClose() }}>Not now</button>
           )}
           {!block.done && <button className="btn quiet" onClick={finish}>Mark done</button>}
-          <button className="btn ghost" onClick={remove}>Remove</button>
+          <button className="btn ghost" onClick={remove}>{task && others.length === 0 ? 'Delete task' : 'Remove block'}</button>
         </div>
       </div>
     </Sheet>

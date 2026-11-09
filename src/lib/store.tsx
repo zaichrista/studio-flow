@@ -52,14 +52,32 @@ export function upgrade(parsed: AppData): AppData {
   void _c
   void _d
   const { clients, projects } = migrateClients(parsed)
+  // First time with a day job: 9–5 becomes the job's, dinner moves up an hour
+  // to make room for evenings, and everything not yet started is re-planned
+  // into freelance time.
+  const gettingJob = saved.hasJob === undefined && !!parsed.settings
+  const kept = gettingJob ? breaks.map((b) => (b.id === 'dinner' && b.start === '18:30' ? { ...b, start: '18:00' } : b)) : breaks
+  const blocks = gettingJob
+    ? (parsed.blocks ?? []).map((b) => (b.date && !b.done && b.loggedSeconds === 0 ? { ...b, date: '', start: '' } : b))
+    : parsed.blocks ?? []
   return {
     ...emptyData(),
     ...parsed,
     clients,
     projects,
+    blocks,
     ideas: parsed.ideas ?? [],
+    misses: parsed.misses ?? [],
     days: parsed.days ?? {},
-    settings: { ...DEFAULT_SETTINGS, ...rest, headsUpMinutes, breaks, look: { ...DEFAULT_SETTINGS.look, ...saved.look } },
+    settings: {
+      ...DEFAULT_SETTINGS,
+      ...rest,
+      headsUpMinutes,
+      breaks: kept,
+      budget: { ...DEFAULT_SETTINGS.budget, ...saved.budget },
+      // The short-lived Sharp look is gone; anyone on it moves to Blush.
+      look: { ...DEFAULT_SETTINGS.look, ...saved.look, palette: ((saved.look?.palette as string) === 'sharp' ? 'blush' : saved.look?.palette) ?? 'blush', theme: saved.look?.sky === undefined ? 'sun' : saved.look.theme ?? 'sun' },
+    },
   }
 }
 

@@ -3,6 +3,8 @@ import { closeDay, setDayNote, toggleTask } from '../lib/actions'
 import { appendToDraft } from '../lib/draft'
 import { dayName, addDays, fmtDuration, iso } from '../lib/dates'
 import { secondsToday } from '../lib/stats'
+import { dayRecord, mustsToday } from '../lib/accountability'
+import { verdict } from '../lib/tone'
 import { useStore } from '../lib/store'
 import { Sheet } from './Sheet'
 import { toast } from './Toast'
@@ -49,6 +51,9 @@ export function ShutdownSheet({ onClose }: { onClose: () => void }) {
   const moving = data.blocks.filter((b) => b.date === today && !b.done && b.loggedSeconds === 0 && b.id !== data.active?.blockId).length
   const when = first ? (first.date === addDays(today, 1) ? 'Tomorrow' : dayName(first.date)) : ''
   const name = data.settings.name.trim()
+  const musts = mustsToday(data, today)
+  const rec = dayRecord(data, today)
+  const tone = data.settings.tone
 
   const done = () => {
     appendToDraft(left)
@@ -76,6 +81,8 @@ export function ShutdownSheet({ onClose }: { onClose: () => void }) {
               ))}
             </div>
           )}
+          {musts.ids.length > 0 && <div className={`verdict ${musts.kept < musts.ids.length && tone !== 'gentle' ? 'bad' : ''}`}>{verdict(tone, musts.kept, musts.ids.length)}</div>}
+          {rec.missed > 0 && tone !== 'gentle' && <div className="verdict bad">{rec.missed} {rec.missed === 1 ? 'block' : 'blocks'} came and went without a start today.</div>}
           {secondsToday(data) > 0 && <div className="faint small">{fmtDuration(secondsToday(data))} of focused time today.</div>}
         </div>
 

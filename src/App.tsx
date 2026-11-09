@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
-import { IconBoard, IconChevronDown, IconChevronLeft, IconDump, IconGear, IconMoney, IconPlus, IconToday, IconWeek, IconWork, Mark } from './components/Icons'
+import { IconChevronDown, IconChevronLeft, IconGear, IconMoney, IconPlus, IconToday, IconWeek, IconWork, Mark } from './components/Icons'
 import { FocusMode, openFocus } from './components/FocusMode'
 import { RestGuard } from './components/RestGuard'
 import { openCapture, QuickCapture } from './components/QuickCapture'
@@ -12,25 +12,27 @@ import { ThemeToggle } from './components/ThemeToggle'
 import { TimerDock } from './components/TimerDock'
 import { syncIfEnabled } from './lib/push'
 import { useStore } from './lib/store'
-import { Board } from './pages/Board'
 import { Dump } from './pages/Dump'
 import { Money } from './pages/Money'
 import { Settings } from './pages/Settings'
 import { Today } from './pages/Today'
+import { Sky, useDayMinutes } from './components/Sky'
+import { StillnessHost } from './components/Meditate'
+import { isDarkSky } from './lib/sky'
 import { Week } from './pages/Week'
 import { Work } from './pages/Work'
 
-export type PageId = 'today' | 'dump' | 'week' | 'board' | 'work' | 'money' | 'settings'
+/** 'dump' is the careful sorter, reached from the ＋ sheet rather than the menu. */
+export type PageId = 'today' | 'dump' | 'week' | 'work' | 'money' | 'settings'
 
+/** Four places to be, and settings tucked away behind a gear. */
 const NAV: { id: PageId; label: string; icon: () => ReactElement }[] = [
   { id: 'today', label: 'Today', icon: IconToday },
-  { id: 'dump', label: 'Dump', icon: IconDump },
-  { id: 'week', label: 'Week', icon: IconWeek },
-  { id: 'board', label: 'Board', icon: IconBoard },
-  { id: 'work', label: 'Work', icon: IconWork },
+  { id: 'week', label: 'Calendar', icon: IconWeek },
+  { id: 'work', label: 'Projects', icon: IconWork },
   { id: 'money', label: 'Money', icon: IconMoney },
-  { id: 'settings', label: 'Settings', icon: IconGear },
 ]
+const PAGES: PageId[] = ['today', 'week', 'work', 'money', 'settings']
 
 const PAGE_KEY = 'studio-flow:page'
 const MENU_KEY = 'studio-flow:menu'
@@ -58,7 +60,7 @@ function initialPage(): PageId {
   try {
     if (awayLong() || new URLSearchParams(location.search).has('n')) return 'today'
     const saved = localStorage.getItem(PAGE_KEY) as PageId | null
-    if (saved && NAV.some((n) => n.id === saved)) return saved
+    if (saved && PAGES.includes(saved)) return saved
   } catch {
     /* ignore */
   }
@@ -86,7 +88,8 @@ export default function App() {
 
   // Palette and light/dark live on <html> so the whole page, and the browser chrome, follow them.
   const dark = useMedia('(prefers-color-scheme: dark)')
-  const theme = look.theme === 'auto' ? (dark ? 'dark' : 'light') : look.theme
+  const dayMin = useDayMinutes()
+  const theme = look.theme === 'sun' ? (isDarkSky(dayMin) ? 'dark' : 'light') : look.theme === 'auto' ? (dark ? 'dark' : 'light') : look.theme
   useEffect(() => {
     document.documentElement.dataset.palette = look.palette
     document.documentElement.dataset.theme = theme
@@ -188,14 +191,15 @@ export default function App() {
     today: <Today go={go} />,
     dump: <Dump go={go} />,
     week: <Week />,
-    board: <Board />,
-    work: <Work />,
+    work: <Work go={go} />,
     money: <Money />,
     settings: <Settings />,
   }[page]
 
   return (
     <div className={`app ${menuOpen ? '' : 'menu-closed'}`} data-mode={mode} data-density={look.density} data-surface={look.surface}>
+      <StillnessHost />
+      {look.theme === 'sun' && <Sky minutes={dayMin} mix={100} sun />}
       <aside className="rail">
         <div className="mark">studio<span>.</span>flow</div>
         <button className="rail-capture" onClick={openCapture}>
@@ -211,6 +215,10 @@ export default function App() {
           ))}
         </nav>
         <div className="spacer" />
+        <button className={`navbtn ${page === 'settings' ? 'on' : ''}`} onClick={() => go('settings')}>
+          <IconGear />
+          Settings
+        </button>
         {myName && (
           <div className="me">
             <span className="avatar" aria-hidden="true">{myName.charAt(0).toUpperCase()}</span>
@@ -230,6 +238,9 @@ export default function App() {
             {label}
           </button>
         ))}
+        <button className={`navbtn gear ${page === 'settings' ? 'on' : ''}`} onClick={() => go('settings')} aria-label="Settings">
+          <IconGear />
+        </button>
         <button className="hide-menu" onClick={() => showMenu(false)} aria-label="Hide menu">
           <IconChevronDown />
         </button>
@@ -238,8 +249,8 @@ export default function App() {
         <Mark />
       </button>
       <TimerDock hidden={page === 'today'} />
-      <ThemeToggle theme={theme} />
-      <QuickCapture hidden={page === 'dump'} />
+      {look.theme !== 'sun' && <ThemeToggle theme={theme} />}
+      <QuickCapture hidden={page === 'dump'} onCareful={() => go('dump')} />
       <FocusMode />
       <RestGuard />
       <ResumePrompt />

@@ -163,3 +163,58 @@ export function clientStats(d: AppData, clientId: string, now = Date.now()) {
   const rate = seconds / 3600 > 0.05 && fees > 0 ? fees / (seconds / 3600) : null
   return { projects, paid, spent, waiting, seconds, openTasks, rate }
 }
+
+export interface MonthBudget {
+  takeHome: number
+  /** Freelance money received this month */
+  freelance: number
+  /** Share of that set aside for tax (salary is already taxed) */
+  tax: number
+  rent: number
+  bills: number
+  savings: number
+  /** Spending logged this month */
+  spent: number
+  /** What is left to spend after everything above */
+  left: number
+  /** Days remaining in the month, today included (0 for a past month) */
+  daysLeft: number
+  /** A fair daily amount from here, never below zero */
+  perDay: number
+  /** The next bill to leave your account, if any this month */
+  next: { name: string; amount: number; day: number } | null
+  /** False until a salary, rent or bill has been entered */
+  set: boolean
+}
+
+/** Salary plus freelance, minus rent, bills, savings, tax on freelance, and spending. */
+export function monthBudget(d: AppData, month: string, today = iso()): MonthBudget {
+  const b = d.settings.budget
+  const sum = monthSummary(d, month)
+  const tax = taxSetAside(d, `${month}-01`, `${month}-31`)
+  const bills = b.bills.reduce((a, x) => a + x.amount, 0)
+  const left = Math.round((b.takeHome + sum.income - tax - b.rent - bills - b.savings - sum.expense) * 100) / 100
+  const [y, m] = month.split('-').map(Number)
+  const last = new Date(y, m, 0).getDate()
+  const inMonth = today.startsWith(month)
+  const daysLeft = inMonth ? last - Number(today.slice(8, 10)) + 1 : today < month ? last : 0
+  const day = inMonth ? Number(today.slice(8, 10)) : today < month ? 1 : 99
+  const upcoming = [
+    ...(b.rent > 0 ? [{ name: 'Rent', amount: b.rent, day: 1 }] : []),
+    ...b.bills.map((x) => ({ name: x.name, amount: x.amount, day: x.day })),
+  ].filter((x) => x.day >= day).sort((p, q) => p.day - q.day)[0] ?? null
+  return {
+    takeHome: b.takeHome,
+    freelance: sum.income,
+    tax,
+    rent: b.rent,
+    bills,
+    savings: b.savings,
+    spent: sum.expense,
+    left,
+    daysLeft,
+    perDay: daysLeft > 0 ? Math.max(0, Math.round((left / daysLeft) * 100) / 100) : 0,
+    next: upcoming,
+    set: b.takeHome > 0 || b.rent > 0 || b.bills.length > 0,
+  }
+}

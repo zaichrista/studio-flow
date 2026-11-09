@@ -33,7 +33,7 @@ export function winsToday(d: AppData, day = iso()): Win[] {
     if (p.invoice?.paidOn === day) out.push({ id: `paid${p.id}`, text: `${p.name} paid${p.pay ? `, ${money(p.pay)}` : ''}` })
     else if (p.invoice?.sentOn === day && !p.invoice.paidOn) out.push({ id: `inv${p.id}`, text: `Invoice sent for ${p.name}` })
   }
-  const ideas = d.ideas.filter((i) => sameDay(i.at, day)).length
+  const ideas = d.ideas.filter((i) => i.kind !== 'worry' && sameDay(i.at, day)).length
   if (ideas) out.push({ id: 'ideas', text: `${ideas} ${ideas === 1 ? 'idea' : 'ideas'} kept` })
   return out
 }
@@ -58,7 +58,7 @@ export function worthKnowing(d: AppData, day = iso()): Heads[] {
     out.push({ id: 'late', text: `${names.length === 1 ? names[0] : `${names.length} tasks`} won't make ${names.length === 1 ? 'its deadline' : 'their deadlines'}. Give ${names.length === 1 ? 'it' : 'one'} more days, or let something go.`, page: 'week' })
   }
   const cap = d.settings.maxWeekHours * 60
-  if (cap > 0 && weekLoad(day, d.blocks, d.events) >= cap) out.push({ id: 'full', text: 'This week is full. New work will wait for next week.', page: 'week' })
+  if (cap > 0 && weekLoad(day, d.blocks, d.events, d.tasks) >= cap) out.push({ id: 'full', text: 'This week is full. New work will wait for next week.', page: 'week' })
   const ready = d.projects.filter((p) => readyToInvoice(d, p))
   if (ready.length) out.push({ id: 'ready', text: `${ready[0].name} is all done${ready[0].pay ? ` (${money(ready[0].pay)})` : ''}. Time to send the invoice?`, page: 'work' })
   const tax = nextTaxDay(day)

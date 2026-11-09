@@ -2,43 +2,30 @@ import { useEffect, useState } from 'react'
 import { BlockSheet, useSnooze } from '../components/BlockSheet'
 import { EventSheet } from '../components/EventSheet'
 import { Care } from '../components/Care'
+import { OnTheClock } from '../components/OnTheClock'
 import { DayArc } from '../components/DayArc'
 import { openFocus } from '../components/FocusMode'
 import { useStart } from '../components/RestGuard'
-import { Intention } from '../components/Intention'
-import { eveningsKept, plannedToday, plannedWeek, zenLine } from '../lib/wellbeing'
+import { Hello } from '../components/Hello'
+import { NightNote } from '../components/NightNote'
+import { Stillness } from '../components/Stillness'
+import { useDayMinutes } from '../components/Sky'
+import { openCapture } from '../components/QuickCapture'
+import { isLateNight } from '../lib/sky'
+import { isOffDay } from '../lib/stillness'
 import { listenShutdown, ShutdownSheet } from '../components/Shutdown'
 import { winsToday, worthKnowing } from '../lib/today'
 import { Ring } from '../components/Icons'
 import { useStopTimer } from '../components/TimerDock'
 import { reopenDay } from '../lib/actions'
 import { startHint } from '../lib/push'
-import { fmtClock, fmtDuration, iso, longDate, nowMinutes, toMin } from '../lib/dates'
+import { fmtClock, fmtDuration, iso, nowMinutes, toMin } from '../lib/dates'
 import { timeLabel } from '../components/Fields'
-import { eventsOn, isWorkDay } from '../lib/scheduler'
-import { activeSeconds, counts, secondsThisWeek, secondsToday } from '../lib/stats'
+import { eventsOn, lastWindowEnd } from '../lib/scheduler'
+import { activeSeconds } from '../lib/stats'
 import { useNow, useStore } from '../lib/store'
 import type { Block, CalEvent } from '../types'
 import type { PageId } from '../App'
-
-const greeting = (name: string) => {
-  const h = new Date().getHours()
-  const hello = h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'
-  return name ? `${hello}, ${name}.` : `${hello}.`
-}
-
-/** A small ring that fills with progress. Soft, never a red warning. */
-function Meter({ value, of, tone = 'sage' }: { value: number; of: number; tone?: 'sage' | 'clay' | 'mist' }) {
-  const r = 22
-  const c = 2 * Math.PI * r
-  const p = of > 0 ? Math.min(1, value / of) : 0
-  return (
-    <svg className={`meter ${tone}`} viewBox="0 0 56 56" aria-hidden="true">
-      <circle cx="28" cy="28" r={r} className="bg" />
-      {p > 0 && <circle cx="28" cy="28" r={r} className="fg" strokeDasharray={`${p * c} ${c}`} transform="rotate(-90 28 28)" />}
-    </svg>
-  )
-}
 
 export function Today({ go }: { go: (p: PageId) => void }) {
   const [showAllWins, setShowAllWins] = useState(false)
@@ -58,10 +45,15 @@ export function Today({ go }: { go: (p: PageId) => void }) {
   const [showLater, setShowLater] = useState(false)
   const today = iso()
   const mins = nowMinutes()
+  const dayMin = useDayMinutes()
+  const late = isLateNight(dayMin)
   const s = data.settings
   const closed = data.closedOn === today
-  const workDay = isWorkDay(today, s)
-  const windingDown = workDay && !closed && mins >= toMin(s.dayEnd) - 30
+  const off = isOffDay(data, today)
+  const quiet = off || closed || late
+  const dayEnd = lastWindowEnd(today, s)
+  const workDay = dayEnd !== null
+  const windingDown = dayEnd !== null && !closed && mins >= dayEnd - 30
 
   const todays = data.blocks
     .filter((b) => b.date === today)
@@ -74,8 +66,6 @@ export function Today({ go }: { go: (p: PageId) => void }) {
   const next = todays.find((b) => !b.done && toMin(b.start) + b.minutes > mins)
   const heads = worthKnowing(data, today)
   const wins = winsToday(data, today)
-  const evenings = eveningsKept(data, today)
-  const c = counts(data)
   const taskOf = (id: string) => data.tasks.find((t) => t.id === id)
   const colourOf = (taskId: string) => data.projects.find((p) => p.id === taskOf(taskId)?.projectId)?.color ?? 'var(--mist)'
 
@@ -142,25 +132,22 @@ export function Today({ go }: { go: (p: PageId) => void }) {
   }
 
   return (
-    <div className={`page ${data.settings.look.today === 'split' ? 'today-split' : ''}`}>
-      <div className="head">
-        <div>
-          <div className="eyebrow">{longDate(today)}</div>
-          <h1>{greeting(data.settings.name)}</h1>
-          <p className="zen">{zenLine(today)}</p>
-          <p className="lede">
-            {closed
-              ? 'Work is put away for today. The evening is yours.'
-              : todays.filter((b) => !b.done).length > 0
-                ? `${todays.filter((b) => !b.done).length} blocks on your calendar today. One at a time.${todaysEvents.length ? ` Plus ${todaysEvents.length} fixed ${todaysEvents.length === 1 ? 'event' : 'events'}.` : ''}`
-                : 'Nothing planned today. That is allowed.'}
-          </p>
-        </div>
-      </div>
+    <div className={`page today ${data.settings.look.today === 'split' ? 'today-split' : ''}`}>
+      <Hello minutes={dayMin} />
+      <p className="lede today-lede">
+        {closed
+          ? 'Work is put away for today. The evening is yours.'
+          : off && todays.length === 0
+            ? 'Nothing planned. A day off is part of the plan.'
+            : todays.filter((b) => !b.done).length > 0
+              ? `${todays.filter((b) => !b.done).length} blocks on your calendar today. One at a time.${todaysEvents.length ? ` Plus ${todaysEvents.length} fixed ${todaysEvents.length === 1 ? 'event' : 'events'}.` : ''}`
+              : 'Nothing planned today. That is allowed.'}
+      </p>
 
-      <DayArc closed={closed} />
+      {late && <NightNote minutes={dayMin} />}
+      {quiet && <Stillness closed={closed} />}
 
-      <Intention />
+      {!closed && !late && (!off || todays.length > 0) && <OnTheClock />}
 
       <div className="today-cols">
       <div className="today-main">
@@ -214,7 +201,7 @@ export function Today({ go }: { go: (p: PageId) => void }) {
           <>
             <div className="clock" style={{ fontSize: 'clamp(30px,5vw,40px)' }}>Clear.</div>
             <div className="soft" style={{ marginBottom: 20 }}>Got something on your mind? Put it down and it will find a place.</div>
-            <button className="btn" onClick={() => go('dump')}>Open the dump</button>
+            <button className="btn" onClick={openCapture}>Empty your head</button>
           </>
         )}
       </div>
@@ -236,49 +223,17 @@ export function Today({ go }: { go: (p: PageId) => void }) {
         </div>
       )}
 
-      <div className="section">
-        <Care />
-      </div>
-
-      <div className="section">
-        <div className="tiles">
-          <div className="tile">
-            <Meter value={secondsToday(data, now) / 60} of={plannedToday(data, today)} />
-            <div>
-              <div className="v">{fmtDuration(secondsToday(data, now))}</div>
-              <div className="l">Focus today</div>
-              <div className="s">{plannedToday(data, today) ? `of ${fmtDuration(plannedToday(data, today) * 60)} planned` : 'nothing planned'}</div>
-            </div>
-          </div>
-          <div className="tile">
-            <Meter value={secondsThisWeek(data, now) / 60} of={plannedWeek(data, today)} />
-            <div>
-              <div className="v">{fmtDuration(secondsThisWeek(data, now))}</div>
-              <div className="l">This week</div>
-              <div className="s">{c.tasksDone} {c.tasksDone === 1 ? 'task' : 'tasks'} finished so far</div>
-            </div>
-          </div>
-          <div className="tile">
-            <Meter value={wins.length} of={Math.max(3, wins.length)} tone="clay" />
-            <div>
-              <div className="v">{wins.length}</div>
-              <div className="l">Small wins</div>
-              <div className="s">{wins.length ? 'today, and they count' : 'the first one is the hardest'}</div>
-            </div>
-          </div>
-          <div className="tile">
-            <Meter value={evenings.kept} of={Math.max(1, evenings.of)} tone="mist" />
-            <div>
-              <div className="v">{evenings.of ? `${evenings.kept} of ${evenings.of}` : 'All'}</div>
-              <div className="l">Evenings kept</div>
-              <div className="s">{evenings.of ? 'put away on time this week' : 'your evenings are yours'}</div>
-            </div>
-          </div>
+      {!quiet && (
+        <div className="section">
+          <Care />
         </div>
-      </div>
+      )}
+
       </div>
 
       <div className="today-side">
+      <DayArc closed={closed} />
+
       <div className="section">
         <div className="row-head">
           <h2>Your day</h2>

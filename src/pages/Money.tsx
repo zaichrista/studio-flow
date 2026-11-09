@@ -3,12 +3,14 @@ import { IconClose } from '../components/Icons'
 import { Sheet } from '../components/Sheet'
 import { toast } from '../components/Toast'
 import { addTxn, deleteTxn, markPaid } from '../lib/actions'
+import { uid } from '../lib/id'
 import { iso, longDate, monthLabel, smallDate } from '../lib/dates'
-import { txnClient, awaitingPayment, daysBetween, invoiceDue, money, monthSummary, nextTaxDay, taxSetAside, taxYear } from '../lib/stats'
+import { txnClient, awaitingPayment, daysBetween, invoiceDue, money, monthBudget, monthSummary, nextTaxDay, taxSetAside, taxYear } from '../lib/stats'
 import { useStore } from '../lib/store'
-import type { Txn } from '../types'
+import type { Bill, Txn } from '../types'
 
-const EXPENSE_CATS = ['Software', 'Supplies', 'Food', 'Bills', 'Travel', 'Fun', 'Other']
+// Rent and bills live in the budget, so they aren't counted twice here.
+const EXPENSE_CATS = ['Software', 'Supplies', 'Food', 'Travel', 'Fun', 'Other']
 const INCOME_CATS = ['Client work', 'Other']
 const TAX_PERCENTS = [15, 20, 25, 30, 35, 40, 45]
 
@@ -69,11 +71,74 @@ function TxnSheet({ onClose }: { onClose: () => void }) {
   )
 }
 
+const num = (v: string) => Math.max(0, Number(v.replace(/[£,\s]/g, '')) || 0)
+const ordinal = (n: number) => `${n}${[, 'st', 'nd', 'rd'][n % 10 > 3 || Math.floor(n / 10) === 1 ? 0 : n % 10] ?? 'th'}`
+
+/** Salary, rent and the bills that leave every month. */
+function BudgetSheet({ onClose }: { onClose: () => void }) {
+  const { data, update } = useStore()
+  const b = data.settings.budget
+  const [takeHome, setTakeHome] = useState(b.takeHome ? String(b.takeHome) : '')
+  const [payDay, setPayDay] = useState(String(b.payDay))
+  const [rent, setRent] = useState(b.rent ? String(b.rent) : '')
+  const [savings, setSavings] = useState(b.savings ? String(b.savings) : '')
+  const [bills, setBills] = useState<{ id: string; name: string; amount: string; day: string }[]>(
+    b.bills.map((x) => ({ id: x.id, name: x.name, amount: String(x.amount), day: String(x.day) })),
+  )
+  const change = (id: string, patch: Partial<{ name: string; amount: string; day: string }>) =>
+    setBills(bills.map((x) => (x.id === id ? { ...x, ...patch } : x)))
+  return (
+    <Sheet title="Salary, rent and bills" onClose={onClose}>
+      <form
+        className="stack"
+        onSubmit={(e) => {
+          e.preventDefault()
+          const clean: Bill[] = bills
+            .filter((x) => x.name.trim() && num(x.amount) > 0)
+            .map((x) => ({ id: x.id, name: x.name.trim(), amount: num(x.amount), day: Math.min(28, Math.max(1, Math.round(Number(x.day)) || 1)) }))
+          update((d) => ({
+            ...d,
+            settings: {
+              ...d.settings,
+              budget: { takeHome: num(takeHome), payDay: Math.min(28, Math.max(1, Math.round(Number(payDay)) || 25)), rent: num(rent), savings: num(savings), bills: clean },
+            },
+          }))
+          toast('Budget saved.')
+          onClose()
+        }}
+      >
+        <div className="lab-row">
+          <label className="lab">Take-home pay a month (£)<input className="field" inputMode="decimal" value={takeHome} onChange={(e) => setTakeHome(e.target.value)} placeholder="After tax" autoFocus /></label>
+          <label className="lab">Paid on the<input className="field" inputMode="numeric" value={payDay} onChange={(e) => setPayDay(e.target.value)} /></label>
+        </div>
+        <div className="lab-row">
+          <label className="lab">Rent (£)<input className="field" inputMode="decimal" value={rent} onChange={(e) => setRent(e.target.value)} placeholder="0" /></label>
+          <label className="lab">Savings a month (£)<input className="field" inputMode="decimal" value={savings} onChange={(e) => setSavings(e.target.value)} placeholder="0" /></label>
+        </div>
+        <div className="small soft">Bills each month</div>
+        {bills.map((x) => (
+          <div key={x.id} className="bill-row">
+            <input className="field" aria-label="Bill name" value={x.name} onChange={(e) => change(x.id, { name: e.target.value })} placeholder="Phone" />
+            <input className="field" aria-label="Amount" inputMode="decimal" value={x.amount} onChange={(e) => change(x.id, { amount: e.target.value })} placeholder="£" />
+            <input className="field" aria-label="Day of the month" inputMode="numeric" value={x.day} onChange={(e) => change(x.id, { day: e.target.value })} placeholder="Day" />
+            <button type="button" className="icon-btn" aria-label={`Remove ${x.name || 'bill'}`} onClick={() => setBills(bills.filter((y) => y.id !== x.id))}><IconClose /></button>
+          </div>
+        ))}
+        <div><button type="button" className="btn quiet small" onClick={() => setBills([...bills, { id: uid(), name: '', amount: '', day: '1' }])}>Add a bill</button></div>
+        <div className="faint small">Use take-home pay, after tax and pension. Your salary is already taxed, so only freelance money has tax set aside.</div>
+        <button className="btn" style={{ marginTop: 8 }}>Save</button>
+      </form>
+    </Sheet>
+  )
+}
+
 export function Money() {
   const { data, update } = useStore()
   const [month, setMonth] = useState(iso().slice(0, 7))
   const [adding, setAdding] = useState(false)
+  const [budgeting, setBudgeting] = useState(false)
   const sum = monthSummary(data, month)
+  const bud = monthBudget(data, month)
   const top = sum.categories[0]?.[1] ?? 1
   const rows = [...sum.rows].sort((a, b) => b.date.localeCompare(a.date))
   const today = iso()
@@ -83,7 +148,6 @@ export function Money() {
   const yearTax = taxSetAside(data, year.from, today)
   const taxDay = nextTaxDay(today)
   const toTaxDay = daysBetween(today, taxDay)
-  const safe = sum.income - monthTax - sum.expense
   const waiting = awaitingPayment(data)
   const waitingTotal = waiting.reduce((a, p) => a + p.pay, 0)
   const unbilled = data.projects.filter((p) => p.pay > 0 && !p.invoice && !p.archived).reduce((a, p) => a + p.pay, 0)
@@ -95,24 +159,52 @@ export function Money() {
         <div>
           <div className="eyebrow">Money</div>
           <h1>{monthLabel(month + '-01')}</h1>
-          <p className="lede">What came in, what went out, what's left.</p>
+          <p className="lede">Salary and freelance in, rent and bills out, what's left to spend.</p>
         </div>
         <div className="row">
           <button className="btn ghost small" onClick={() => setMonth(shiftMonth(month, -1))}>←</button>
           <button className="btn ghost small" onClick={() => setMonth(shiftMonth(month, 1))}>→</button>
+          <button className="btn ghost small" onClick={() => setBudgeting(true)}>Salary & bills</button>
           <button className="btn" onClick={() => setAdding(true)}>Add</button>
         </div>
       </div>
 
-      <div className="cols three">
-        <div><div className="eyebrow">In</div><div className="big pos">{money(sum.income)}</div></div>
-        <div><div className="eyebrow">Out</div><div className="big">{money(sum.expense)}</div></div>
-        <div>
-          <div className="eyebrow">Safe to spend</div>
-          <div className={`big ${safe < 0 ? 'neg' : ''}`}>{money(Math.round(safe * 100) / 100)}</div>
-          <div className="faint small" style={{ marginTop: 6 }}>after {pct}% for tax</div>
+      {!bud.set && (
+        <div className="notice" style={{ marginBottom: 24 }}>
+          Put in your salary, rent and bills and this page tells you what you can actually spend.{' '}
+          <button className="btn small" onClick={() => setBudgeting(true)}>Set it up</button>
         </div>
+      )}
+
+      <div className="cols three">
+        <div>
+          <div className="eyebrow">Left to spend</div>
+          <div className={`big ${bud.left < 0 ? 'neg' : 'pos'}`}>{money(bud.left)}</div>
+          <div className="faint small" style={{ marginTop: 6 }}>
+            {bud.daysLeft > 0 ? (bud.left > 0 ? `About ${money(Math.floor(bud.perDay))} a day for ${bud.daysLeft} ${bud.daysLeft === 1 ? 'day' : 'days'}` : 'Nothing to spare. Hold off.') : 'After rent, bills, savings and tax'}
+          </div>
+        </div>
+        <div><div className="eyebrow">Freelance in</div><div className="big">{money(bud.freelance)}</div><div className="faint small" style={{ marginTop: 6 }}>{money(bud.tax)} set aside for tax</div></div>
+        <div><div className="eyebrow">Spent</div><div className="big">{money(bud.spent)}</div>{bud.next && <div className="faint small" style={{ marginTop: 6 }}>Next out: {bud.next.name} {money(bud.next.amount)}, the {ordinal(bud.next.day)}</div>}</div>
       </div>
+
+      {bud.set && (
+        <div className="section">
+          <div className="row-head"><h2>Where the month goes</h2></div>
+          <div className="card flat">
+            <div className="ledger">
+              <div><span>Take-home pay</span><span className="num pos">+{money(bud.takeHome)}</span></div>
+              <div><span>Freelance received</span><span className="num pos">+{money(bud.freelance)}</span></div>
+              <div><span>Tax on freelance ({pct}%)</span><span className="num">−{money(bud.tax)}</span></div>
+              <div><span>Rent</span><span className="num">−{money(bud.rent)}</span></div>
+              {data.settings.budget.bills.map((x) => <div key={x.id}><span>{x.name} <span className="faint small">the {ordinal(x.day)}</span></span><span className="num">−{money(x.amount)}</span></div>)}
+              {bud.savings > 0 && <div><span>Savings</span><span className="num">−{money(bud.savings)}</span></div>}
+              <div><span>Spent so far</span><span className="num">−{money(bud.spent)}</span></div>
+              <div className="total"><span>Left to spend</span><span className={`num ${bud.left < 0 ? 'neg' : ''}`}>{money(bud.left)}</span></div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="section">
         <div className="row-head"><h2>Tax pot</h2></div>
@@ -138,7 +230,7 @@ export function Money() {
               {(TAX_PERCENTS.includes(pct) ? TAX_PERCENTS : [...TAX_PERCENTS, pct].sort((a, b) => a - b)).map((n) => <option key={n} value={n}>{n}%</option>)}
             </select>
           </label>
-          <div className="faint small">About 20–25% suits most basic-rate sole traders; more if you earn over £50,270. A rough guide, not tax advice.</div>
+          <div className="faint small">Your salary is taxed before it reaches you. Freelance money on top is taxed at your highest rate, so 20–40% is usual. A rough guide, not tax advice.</div>
         </div>
       </div>
 
@@ -214,11 +306,12 @@ export function Money() {
 
       {unbilled > 0 && (
         <div className="section">
-          <div className="notice ok">{money(unbilled)} of project fees not invoiced yet. When you send one, tap “Invoice sent” on the Work page, and payments land here on their own.</div>
+          <div className="notice ok">{money(unbilled)} of project fees not invoiced yet. When you send one, tap “Invoice sent” on the Projects page, and payments land here on their own.</div>
         </div>
       )}
 
       {adding && <TxnSheet onClose={() => setAdding(false)} />}
+      {budgeting && <BudgetSheet onClose={() => setBudgeting(false)} />}
     </div>
   )
 }

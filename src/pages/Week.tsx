@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { BlockSheet } from '../components/BlockSheet'
 import { EventSheet } from '../components/EventSheet'
+import { SlotSheet } from '../components/SlotSheet'
 import { Seg, timeLabel } from '../components/Fields'
 import { toast } from '../components/Toast'
 import { moveBlock, moveEvent } from '../lib/actions'
-import { addDays, dayName, fmtDuration, fromMin, iso, longDate, monday, nowMinutes, shortDay, smallDate, toMin, weekday } from '../lib/dates'
-import { eventsOn, isLate, weekLoad } from '../lib/scheduler'
+import { addDays, dayName, fmtDuration, fromMin, iso, longDate, monday, nowMinutes, shortDay, smallDate, toMin } from '../lib/dates'
+import { allWindows, eventsOn, isLate, laneOf, weekLoad, windowsOn } from '../lib/scheduler'
+import { takeJump } from '../lib/slots'
 import { useStore } from '../lib/store'
 import type { AppData, CalEvent, Look } from '../types'
 
@@ -14,7 +16,7 @@ const KIND_LABEL = { shift: 'Shift', appointment: 'Appointment', personal: 'Pers
 function visibleDays(data: AppData, weekStart: string): string[] {
   return Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)).filter(
     (d) =>
-      data.settings.workDays.includes(weekday(d)) ||
+      allWindows(d, data.settings).length > 0 ||
       eventsOn(data.events, d).length > 0 ||
       data.blocks.some((b) => b.date === d),
   )
@@ -25,6 +27,12 @@ function hourRange(data: AppData, days: string[]) {
   const s = data.settings
   let lo = toMin(s.dayStart)
   let hi = toMin(s.dayEnd)
+  for (const d of days) {
+    for (const w of allWindows(d, s)) {
+      lo = Math.min(lo, w.from)
+      hi = Math.max(hi, w.to)
+    }
+  }
   for (const b of s.breaks) {
     if (b.minutes > 0) {
       lo = Math.min(lo, toMin(b.start))
@@ -81,9 +89,10 @@ interface ColumnProps {
   onEvent: (e: CalEvent) => void
   onTap: (date: string, clientY: number, col: HTMLElement) => void
   quiet: () => boolean
+  flash: string | null
 }
 
-function DayColumn({ data, date, range, hh, index, drag, begin, onBlock, onEvent, onTap, quiet }: ColumnProps) {
+function DayColumn({ data, date, range, hh, index, drag, begin, onBlock, onEvent, onTap, quiet, flash }: ColumnProps) {
   const today = iso()
   const y = (m: number) => ((m - range.from * 60) / 60) * hh
   const hours = Array.from({ length: range.to - range.from + 1 }, (_, i) => range.from + i)
@@ -98,13 +107,19 @@ function DayColumn({ data, date, range, hh, index, drag, begin, onBlock, onEvent
         if ((e.target as Element).closest('.blk')) return
         const at = range.from * 60 + ((e.clientY - e.currentTarget.getBoundingClientRect().top) / hh) * 60
         const from = down(at)
-        begin(e, { mode: 'new', date, from, to: from + STEP, label: 'New event' })
+        begin(e, { mode: 'new', date, from, to: from + STEP, label: 'New' })
       }}
       onClick={(e) => {
         if (quiet() || (e.target as Element).closest('.blk')) return
         onTap(date, e.clientY, e.currentTarget)
       }}
     >
+      {data.settings.hasJob && windowsOn(date, data.settings, 'job').map((w, i) => (
+        <div key={`j${i}`} className="band job" style={{ top: y(w.from), height: ((w.to - w.from) / 60) * hh }}>{index === 0 && <span>Day job</span>}</div>
+      ))}
+      {data.settings.hasJob && windowsOn(date, data.settings, 'freelance').map((w, i) => (
+        <div key={`f${i}`} className="band free" style={{ top: y(w.from), height: ((w.to - w.from) / 60) * hh }}>{index === 0 && <span>Freelance</span>}</div>
+      ))}
       {hours.map((h) => <div key={h} className="line" style={{ top: (h - range.from) * hh }} />)}
       {data.settings.breaks.filter((b) => b.minutes > 0).map((b) => (
         <div key={b.id} className="lunch" style={{ top: y(toMin(b.start)), height: (b.minutes / 60) * hh }}>
@@ -141,7 +156,7 @@ function DayColumn({ data, date, range, hh, index, drag, begin, onBlock, onEvent
         const project = data.projects.find((p) => p.id === task?.projectId)
         const h = Math.max(22, (b.minutes / 60) * hh - 3)
         const running = data.active?.blockId === b.id
-        const cls = ['blk', b.done ? 'done' : '', isLate(b, task) ? 'late' : '', running ? 'running' : '', lifted(b.id)].join(' ')
+        const cls = ['blk', laneOf(task) === 'job' ? 'job' : '', b.done ? 'done' : '', isLate(b, task) ? 'late' : '', running ? 'running' : '', flash === b.id ? 'flash' : '', lifted(b.id)].join(' ')
         const from = toMin(b.start)
         const color = project?.color ?? 'var(--mist)'
         return (
@@ -183,9 +198,10 @@ interface TimelineProps {
   onEvent: (e: CalEvent) => void
   onCreate: (date: string, from: number, to: number) => void
   onDrop: (d: Drag) => void
+  flash: string | null
 }
 
-function Timeline({ data, days, hh, onBlock, onEvent, onCreate, onDrop }: TimelineProps) {
+function Timeline({ data, days, hh, onBlock, onEvent, onCreate, onDrop, flash }: TimelineProps) {
   const range = hourRange(data, days)
   const hours = Array.from({ length: range.to - range.from + 1 }, (_, i) => range.from + i)
   const today = iso()
@@ -312,7 +328,7 @@ function Timeline({ data, days, hh, onBlock, onEvent, onCreate, onDrop }: Timeli
         {hours.map((h) => <span key={h} style={{ top: (h - range.from) * hh }}>{fromMin(h * 60)}</span>)}
       </div>
       {days.map((d, i) => (
-        <DayColumn key={d} data={data} date={d} range={range} hh={hh} index={i} drag={drag} begin={begin} onBlock={onBlock} onEvent={onEvent} onTap={tap} quiet={quiet} />
+        <DayColumn key={d} data={data} date={d} range={range} hh={hh} index={i} drag={drag} begin={begin} onBlock={onBlock} onEvent={onEvent} onTap={tap} quiet={quiet} flash={flash} />
       ))}
     </div>
   )
@@ -387,6 +403,21 @@ export function Week() {
   const [dayOffset, setDayOffset] = useState(0)
   const [openBlock, setOpenBlock] = useState<string | null>(null)
   const [eventSheet, setEventSheet] = useState<{ event?: CalEvent; date?: string; from?: string; to?: string } | null>(null)
+  const [slot, setSlot] = useState<{ date: string; from: number; to: number } | null>(null)
+  const [flash, setFlash] = useState<string | null>(null)
+
+  // A task's slot chip sends you here: show that week and light up the block.
+  useEffect(() => {
+    const id = takeJump()
+    const b = id ? data.blocks.find((x) => x.id === id) : undefined
+    if (!b?.date) return
+    setOffset(Math.round((new Date(monday(b.date) + 'T12:00').getTime() - new Date(monday(iso()) + 'T12:00').getTime()) / (7 * 86_400_000)))
+    setDayOffset(Math.round((new Date(b.date + 'T12:00').getTime() - new Date(iso() + 'T12:00').getTime()) / 86_400_000))
+    setFlash(b.id)
+    const t = window.setTimeout(() => setFlash(null), 2600)
+    return () => window.clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const today = iso()
   const weekStart = addDays(monday(today), offset * 7)
@@ -396,8 +427,7 @@ export function Week() {
   const setView = (v: Look['week']) =>
     update((d) => ({ ...d, settings: { ...d.settings, look: { ...d.settings.look, week: v } } }))
 
-  const create = (date: string, from: number, to: number) =>
-    setEventSheet({ date, from: fromMin(from), to: fromMin(Math.min(to, LATEST)) })
+  const create = (date: string, from: number, to: number) => setSlot({ date, from, to: Math.min(to, LATEST) })
 
   /** Something was dropped somewhere new on the calendar. */
   const drop = (dr: Drag) => {
@@ -427,7 +457,7 @@ export function Week() {
   const waiting = data.blocks.filter((b) => !b.date && !b.done).length
   const label = view === 'day' ? longDate(oneDay) : days.length ? `${smallDate(days[0])} – ${smallDate(days[days.length - 1])}` : ''
   const cap = data.settings.maxWeekHours * 60
-  const load = weekLoad(view === 'day' ? oneDay : weekStart, data.blocks, data.events)
+  const load = weekLoad(view === 'day' ? oneDay : weekStart, data.blocks, data.events, data.tasks)
   const lateTasks = [...new Set(
     data.blocks
       .filter((b) => b.date && days.includes(b.date) && isLate(b, data.tasks.find((t) => t.id === b.taskId)))
@@ -441,8 +471,8 @@ export function Week() {
         <div>
           <div className="eyebrow">{eyebrow}</div>
           <h1>{label}</h1>
-          <p className="lede">{planned} {planned === 1 ? 'block' : 'blocks'} planned.{waiting > 0 && ` ${waiting} waiting for a free slot.`}</p>
-          {view !== 'agenda' && <p className="faint small" style={{ marginTop: 4 }}>Tap an empty spot to add a shift or plan. Press and hold anything to move it.</p>}
+          <p className="lede">{planned} {planned === 1 ? 'block' : 'blocks'} planned.</p>
+          {view !== 'agenda' && <p className="faint small" style={{ marginTop: 4 }}>Tap an empty spot to plan a task there. Press and hold anything to move it.</p>}
           {cap > 0 && (
             <div className="load">
               <div className="bar"><i className={load > cap ? 'over' : ''} style={{ width: `${Math.min(100, (load / cap) * 100)}%` }} /></div>
@@ -461,6 +491,19 @@ export function Week() {
         </div>
       </div>
 
+      {waiting > 0 && (
+        <div className="tray">
+          <div className="eyebrow">Needs a slot · {waiting}</div>
+          <div className="tray-chips">
+            {data.blocks.filter((b) => !b.date && !b.done).map((b) => {
+              const t = data.tasks.find((x) => x.id === b.taskId)
+              return <button key={b.id} className={`chip ${laneOf(t) === 'job' ? 'job' : ''}`} onClick={() => setOpenBlock(b.id)}>{t?.title} · {b.minutes}m</button>
+            })}
+          </div>
+          <div className="faint small">These have no free time before their deadline or inside this week's limit. Tap an empty spot on the calendar, then pick one, or give the task more days.</div>
+        </div>
+      )}
+
       {lateTasks.length > 0 && (
         <div className="notice" style={{ marginBottom: 24 }}>
           {lateTasks.length === 1 ? <><b>{lateTasks[0]}</b> won't make its deadline.</> : <><b>{lateTasks.slice(0, -1).join(', ')}</b> and <b>{lateTasks[lateTasks.length - 1]}</b> won't make their deadlines.</>}{' '}
@@ -473,9 +516,10 @@ export function Week() {
       ) : view === 'agenda' ? (
         <Agenda data={data} days={days} onBlock={setOpenBlock} onEvent={(event) => setEventSheet({ event })} />
       ) : (
-        <Timeline data={data} days={days} hh={view === 'day' ? 80 : 64} onBlock={setOpenBlock} onEvent={(event) => setEventSheet({ event })} onCreate={create} onDrop={drop} />
+        <Timeline data={data} days={days} hh={view === 'day' ? 80 : 64} onBlock={setOpenBlock} onEvent={(event) => setEventSheet({ event })} onCreate={create} onDrop={drop} flash={flash} />
       )}
 
+      {slot && <SlotSheet date={slot.date} from={slot.from} to={slot.to} onClose={() => setSlot(null)} onEvent={() => { setEventSheet({ date: slot.date, from: fromMin(slot.from), to: fromMin(slot.to) }); setSlot(null) }} />}
       {openBlock && <BlockSheet blockId={openBlock} onClose={() => setOpenBlock(null)} />}
       {eventSheet && <EventSheet event={eventSheet.event} date={eventSheet.date} from={eventSheet.from} to={eventSheet.to} onClose={() => setEventSheet(null)} />}
     </div>

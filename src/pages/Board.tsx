@@ -4,6 +4,7 @@ import { addTask, setStatus, statusOf, toggleSubtask } from '../lib/actions'
 import type { Status } from '../lib/actions'
 import { iso, smallDate } from '../lib/dates'
 import { taskSeconds } from '../lib/stats'
+import { slotLabel } from '../lib/slots'
 import { fmtDuration } from '../lib/dates'
 import { Seg } from '../components/Fields'
 import { useStart } from '../components/RestGuard'
@@ -27,6 +28,7 @@ function Card({ task, status }: { task: Task; status: Status }) {
   const next = COLUMNS[idx + 1]
   const running = data.active?.taskId === task.id
   const begin = useStart()
+  const slot = slotLabel(data, task.id)
 
   const onDragStart = (e: DragEvent) => {
     e.dataTransfer.setData('text/plain', task.id)
@@ -43,6 +45,7 @@ function Card({ task, status }: { task: Task; status: Status }) {
       <div className="faint small row" style={{ gap: 8 }}>
         <span className="dot" style={{ background: project?.color ?? 'var(--mist)' }} />
         <span className="grow" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{project?.name ?? 'Personal'}</span>
+        {task.lane === 'job' && <span className="lane-tag">Job</span>}
         {running && <span className="chip">timing</span>}
       </div>
       <div className="title" style={{ margin: '6px 0 4px' }}>{task.title}</div>
@@ -62,6 +65,7 @@ function Card({ task, status }: { task: Task; status: Status }) {
       <div className="faint small" style={{ marginTop: 8 }}>
         <span className={overdue ? 'neg' : ''}>due {smallDate(task.dueDate)}</span>
         {spent > 0 && ` · ${fmtDuration(spent)}`}
+        {slot && !task.done && ` · ${slot.text}`}
       </div>
 
       <div className="kmove">
@@ -119,7 +123,7 @@ function Column({ col, tasks, projectId }: { col: (typeof COLUMNS)[number]; task
   )
 }
 
-export function Board() {
+export function Board({ embedded = false }: { embedded?: boolean }) {
   const { data, update } = useStore()
   const layout = data.settings.look.board
   const [filter, setFilter] = useState<string>('all')
@@ -133,14 +137,16 @@ export function Board() {
       .sort((a, b) => (s === 'done' ? b.createdAt - a.createdAt : a.dueDate.localeCompare(b.dueDate) || a.createdAt - b.createdAt))
 
   return (
-    <div className="page wide">
-      <div className="head">
-        <div>
-          <div className="eyebrow">Board</div>
-          <h1>To do, doing, done.</h1>
-          <p className="lede">Drag a card across, or use the arrows. Starting a timer moves a task to Doing on its own.</p>
+    <div className={embedded ? '' : 'page wide'}>
+      {!embedded && (
+        <div className="head">
+          <div>
+            <div className="eyebrow">Board</div>
+            <h1>To do, doing, done.</h1>
+            <p className="lede">Drag a card across, or use the arrows. Starting a timer moves a task to Doing on its own.</p>
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="row" style={{ justifyContent: 'space-between', flexWrap: 'wrap', marginBottom: 24, gap: 16 }}>
       <div className="seg" style={{ flexWrap: 'wrap', borderRadius: 24 }}>

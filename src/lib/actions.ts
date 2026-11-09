@@ -1,5 +1,5 @@
-import type { AppData, Block, CalEvent, Client, DayNote, Idea, Invoice, Project, SortedDump, Task, TaskKind, Txn } from '../types'
-import { fromMin, iso, nowMinutes, stamp, toMin, weekday } from './dates'
+import type { AppData, Block, CalEvent, Client, DayNote, Idea, Invoice, Lane, Project, SortedDump, Task, TaskKind, Txn } from '../types'
+import { addDays, fromMin, iso, nowMinutes, stamp, toMin, weekday } from './dates'
 import { uid } from './id'
 import { guessKind } from './kind'
 import { parseDump } from './parseDump'
@@ -7,7 +7,9 @@ import {
   defaultDue,
   eventsOn,
   DEFAULT_SETTINGS,
+  laneOf,
   makeBlocks,
+  missedBlocks,
   placePending,
   rollOver,
   splitBlock,
@@ -29,6 +31,7 @@ export const emptyData = (): AppData => ({
   txns: [],
   dumps: [],
   ideas: [],
+  misses: [],
   days: {},
 })
 
@@ -41,9 +44,15 @@ const place = (d: AppData, tasks: Task[], blocks: Block[], now: Date) =>
 /** Re-queue missed blocks and place everything that is waiting. */
 export function replan(d: AppData, now: Date = new Date()): AppData {
   const keep = d.active?.blockId ?? null
+  // Anything that passed without a single minute worked is written down as a miss.
+  const recent = addDays(iso(now), -14)
+  const gone = missedBlocks(d.blocks, now, keep).filter((b) => b.date >= recent)
+  const misses = gone.length
+    ? [...(d.misses ?? []), ...gone.map((b) => ({ id: b.id, date: b.date, taskId: b.taskId, minutes: b.minutes }))].slice(-300)
+    : d.misses ?? []
   const rolled = rollOver(d.blocks, now, keep)
   const clear = unplaceConflicts(rolled, d.settings, d.events, keep)
-  return { ...d, blocks: place(d, d.tasks, clear, now) }
+  return { ...d, misses, blocks: place(d, d.tasks, clear, now) }
 }
 
 export function addDump(d: AppData, text: string): { data: AppData; id: string } {
@@ -60,6 +69,8 @@ interface NewTask {
   daysToComplete?: number
   firstStep?: string
   kind?: TaskKind
+  /** Job or freelance; taken from the project when there is one */
+  lane?: Lane
   /** Multiply the estimate by this, to match how long things really take */
   pad?: number
 }
@@ -80,10 +91,11 @@ export function addTask(d: AppData, t: NewTask, now: Date = new Date()): AppData
       ? Math.min(ADMIN_MINUTES, d.settings.blockMinutes)
       : d.settings.blockMinutes * Math.max(1, subtasks.length)
   const estimate = t.pad && t.pad > 1 ? quarter(planned * t.pad) : planned
+  const lane: Lane = t.lane ?? laneOf(d.projects.find((p) => p.id === t.projectId))
   const dueDate =
     t.dueDate && t.dueDate >= today
       ? t.dueDate
-      : defaultDue(today, d.settings, t.daysToComplete ?? d.settings.defaultTaskDays)
+      : defaultDue(today, d.settings, t.daysToComplete ?? d.settings.defaultTaskDays, lane)
   const task: Task = {
     id: uid(),
     projectId: t.projectId,
@@ -96,6 +108,7 @@ export function addTask(d: AppData, t: NewTask, now: Date = new Date()): AppData
     createdAt: now.getTime() + d.tasks.length,
     ...(t.firstStep?.trim() ? { firstStep: t.firstStep.trim() } : {}),
     kind,
+    lane,
   }
   const tasks = [...d.tasks, task]
   const blocks = place(d, tasks, [...d.blocks, ...makeBlocks(task, d.settings)], now)
@@ -103,7 +116,7 @@ export function addTask(d: AppData, t: NewTask, now: Date = new Date()): AppData
 }
 
 /** Turn the AI's tidy-up of a brain dump into projects, tasks and spending. */
-export function applySorted(d: AppData, sorted: SortedDump, now: Date = new Date(), pad?: number): AppData {
+export function applySorted(d: AppData, sorted: SortedDump, now: Date = new Date(), pad?: number, lane?: Lane): AppData {
   let next = d
   const projects = [...d.projects]
   const ideas: Idea[] = []
@@ -125,6 +138,7 @@ export function applySorted(d: AppData, sorted: SortedDump, now: Date = new Date
         pay: p.pay && p.pay > 0 ? p.pay : 0,
         color: PALETTE[projects.length % PALETTE.length],
         archived: false,
+        ...(lane ? { lane } : {}),
       }
       projects.push(project)
     } else if (p.pay && p.pay > 0 && project.pay === 0) {
@@ -135,7 +149,7 @@ export function applySorted(d: AppData, sorted: SortedDump, now: Date = new Date
     for (const i of p.ideas ?? []) keepIdea(i, project.id)
   }
 
-  for (const t of sorted.loose ?? []) next = addTask(next, { ...t, projectId: null, pad }, now)
+  for (const t of sorted.loose ?? []) next = addTask(next, { ...t, projectId: null, pad, lane }, now)
   for (const i of sorted.ideas ?? []) keepIdea(i, null)
 
   const txns: Txn[] = (sorted.expenses ?? [])
@@ -162,23 +176,33 @@ export function ideaToTask(d: AppData, id: string, now: Date = new Date()): AppD
   return deleteIdea(addTask(d, { projectId: idea.projectId, title: idea.text }, now), id)
 }
 
-/** Edit the small bits of a task: its first step, where you were up to. */
-export function patchTask(d: AppData, id: string, patch: Partial<Pick<Task, 'firstStep' | 'resumeNote' | 'title' | 'kind' | 'projectId'>>): AppData {
-  const next = { ...d, tasks: d.tasks.map((t) => (t.id === id ? { ...t, ...patch } : t)) }
-  if (!patch.kind) return next
-  // A new kind may want a different part of the day: move its untouched blocks.
-  const blocks = next.blocks.map((b) =>
+/** Give a task's untouched blocks back to the calendar so they find a place in their lane. */
+const unplaceTask = (d: AppData, id: string): Block[] =>
+  d.blocks.map((b) =>
     b.taskId === id && !b.done && b.loggedSeconds === 0 && b.id !== d.active?.blockId ? { ...b, date: '', start: '' } : b,
   )
-  return replan({ ...next, blocks })
+
+/** Edit the small bits of a task: its first step, where you were up to, which lane it's in. */
+export function patchTask(d: AppData, id: string, patch: Partial<Pick<Task, 'firstStep' | 'resumeNote' | 'title' | 'kind' | 'projectId' | 'lane'>>): AppData {
+  const task = d.tasks.find((t) => t.id === id)
+  if (!task) return d
+  const next = { ...d, tasks: d.tasks.map((t) => (t.id === id ? { ...t, ...patch } : t)) }
+  // Moving into a project means joining its lane.
+  let lane = patch.lane
+  if (lane === undefined && patch.projectId) lane = laneOf(d.projects.find((p) => p.id === patch.projectId))
+  const laneChanged = lane !== undefined && lane !== laneOf(task)
+  if (laneChanged) next.tasks = next.tasks.map((t) => (t.id === id ? { ...t, lane } : t))
+  if (!patch.kind && !laneChanged) return next
+  // A new kind or lane may want a different part of the day: move its untouched blocks.
+  return replan({ ...next, blocks: unplaceTask(next, id) })
 }
 
 /**
  * Put it down from anywhere: sort with the built-in rules and place it,
  * no review step. (The Dump page still offers the careful version.)
  */
-export function quickCapture(d: AppData, text: string, now: Date = new Date()): AppData {
-  return applySorted(addDump(d, text).data, parseDump(text, now), now)
+export function quickCapture(d: AppData, text: string, now: Date = new Date(), lane?: Lane): AppData {
+  return applySorted(addDump(d, text).data, parseDump(text, now), now, undefined, lane)
 }
 
 /** Not now: this block moves to the next free slot at least `minutes` from now. */
@@ -245,7 +269,16 @@ export function deleteTask(d: AppData, id: string): AppData {
 
 export function saveProject(d: AppData, p: Partial<Project> & { id?: string; name: string }): AppData {
   if (p.id && d.projects.some((x) => x.id === p.id)) {
-    return { ...d, projects: d.projects.map((x) => (x.id === p.id ? { ...x, ...p } : x)) }
+    const was = laneOf(d.projects.find((x) => x.id === p.id))
+    const next = { ...d, projects: d.projects.map((x) => (x.id === p.id ? { ...x, ...p } : x)) }
+    if (!p.lane || p.lane === was) return next
+    // Its tasks follow it to the other lane, and their blocks find new places.
+    const ids = new Set(d.tasks.filter((t) => t.projectId === p.id).map((t) => t.id))
+    const moved = { ...next, tasks: next.tasks.map((t) => (ids.has(t.id) ? { ...t, lane: p.lane } : t)) }
+    const blocks = moved.blocks.map((b) =>
+      ids.has(b.taskId) && !b.done && b.loggedSeconds === 0 && b.id !== d.active?.blockId ? { ...b, date: '', start: '' } : b,
+    )
+    return replan({ ...moved, blocks })
   }
   const project: Project = {
     id: uid(),
@@ -254,6 +287,7 @@ export function saveProject(d: AppData, p: Partial<Project> & { id?: string; nam
     pay: p.pay ?? 0,
     color: p.color ?? PALETTE[d.projects.length % PALETTE.length],
     archived: false,
+    ...(p.lane ? { lane: p.lane } : {}),
   }
   return { ...d, projects: [...d.projects, project] }
 }
@@ -327,6 +361,19 @@ export function saveEvent(d: AppData, e: Omit<CalEvent, 'id'> & { id?: string })
   return replan({ ...d, events })
 }
 
+/** Why a stretch of time can't hold work, or null when it's free to take. */
+export function slotProblem(d: AppData, date: string, start: number, minutes: number, now: Date = new Date()): string | null {
+  const end = start + minutes
+  const today = iso(now)
+  if (date < today || (date === today && start < nowMinutes(now))) return 'That time has already passed.'
+  if (end > 24 * 60) return 'That would run past midnight.'
+  const clash = eventsOn(d.events, date).find((o) => start < o.to && end > o.from)
+  if (clash) return `That time belongs to ${clash.event.title}.`
+  const rest = d.settings.breaks.find((b) => b.minutes > 0 && start < toMin(b.start) + b.minutes && end > toMin(b.start))
+  if (rest) return `That's your ${rest.name.toLowerCase()}.`
+  return null
+}
+
 /**
  * Put a work block exactly where it was dropped. Fixed time (events, breaks)
  * and the past can't be taken, so those return a reason instead. Other work
@@ -341,14 +388,9 @@ export function moveBlock(
 ): { data: AppData } | { reason: string } {
   const block = d.blocks.find((b) => b.id === id)
   if (!block) return { reason: 'That block has gone.' }
+  const problem = slotProblem(d, date, start, block.minutes, now)
+  if (problem) return { reason: problem }
   const end = start + block.minutes
-  const today = iso(now)
-  if (date < today || (date === today && start < nowMinutes(now))) return { reason: "That time has already passed." }
-  if (end > 24 * 60) return { reason: "That would run past midnight." }
-  const clash = eventsOn(d.events, date).find((o) => start < o.to && end > o.from)
-  if (clash) return { reason: `That time belongs to ${clash.event.title}.` }
-  const rest = d.settings.breaks.find((b) => b.minutes > 0 && start < toMin(b.start) + b.minutes && end > toMin(b.start))
-  if (rest) return { reason: `That's your ${rest.name.toLowerCase()}.` }
   const keep = d.active?.blockId ?? null
   const blocks = d.blocks.map((b) => {
     if (b.id === id) return { ...b, date, start: fromMin(start), after: undefined }
@@ -358,6 +400,28 @@ export function moveBlock(
     return inWay ? { ...b, date: '', start: '' } : b
   })
   return { data: replan({ ...d, blocks }, now) }
+}
+
+/**
+ * A new task whose single block sits exactly where you pressed the calendar.
+ * Its due date is that day, so it never reads as late.
+ */
+export function addTaskAt(
+  d: AppData,
+  t: Omit<NewTask, 'estimateMinutes' | 'dueDate'>,
+  date: string,
+  start: number,
+  minutes: number,
+  now: Date = new Date(),
+): { data: AppData } | { reason: string } {
+  const problem = slotProblem(d, date, start, minutes, now)
+  if (problem) return { reason: problem }
+  const withTask = addTask(d, { ...t, estimateMinutes: minutes, dueDate: date }, now)
+  const task = withTask.tasks[withTask.tasks.length - 1]
+  const mine = withTask.blocks.filter((b) => b.taskId === task.id)
+  const first = mine[0]
+  const blocks = withTask.blocks.filter((b) => b.taskId !== task.id || b.id === first.id).map((b) => (b.id === first.id ? { ...b, minutes } : b))
+  return moveBlock({ ...withTask, blocks }, first.id, date, start, now)
 }
 
 /**
@@ -433,6 +497,11 @@ export function setDayNote(d: AppData, date: string, patch: Partial<DayNote>): A
   if (Object.keys(note).length) days[date] = note
   else delete days[date]
   return { ...d, days }
+}
+
+/** Promise yourself these tasks today (at most three). Empty clears it. */
+export function setMusts(d: AppData, date: string, ids: string[]): AppData {
+  return setDayNote(d, date, { musts: ids.slice(0, 3) })
 }
 
 /** Tick or untick one little act of care for today. */

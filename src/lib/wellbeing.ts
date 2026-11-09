@@ -1,6 +1,6 @@
 import type { AppData } from '../types'
-import { addDays, iso, monday, stamp, toMin } from './dates'
-import { isWorkDay } from './scheduler'
+import { addDays, fromMin, iso, monday, stamp, toMin } from './dates'
+import { lastWindowEnd } from './scheduler'
 
 /** A quiet line for the day. Changes each morning; the same all day. */
 const LINES = [
@@ -49,11 +49,12 @@ export function eveningsKept(d: AppData, day = iso()): { kept: number; of: numbe
   let kept = 0
   let of = 0
   for (let date = monday(day); date <= day; date = addDays(date, 1)) {
-    if (!isWorkDay(date, s)) continue
+    const end = lastWindowEnd(date, s)
+    if (end === null) continue
     const closedAt = d.days[date]?.closedAt
     if (date === day && !closedAt) continue
     of++
-    if (closedAt && closedAt <= stamp(date, s.dayEnd) + 45 * 60_000) kept++
+    if (closedAt && closedAt <= stamp(date, fromMin(end)) + 45 * 60_000) kept++
   }
   return { kept, of }
 }

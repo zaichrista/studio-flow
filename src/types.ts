@@ -14,19 +14,64 @@ export interface Look {
   today: 'focus' | 'split'
   week: 'grid' | 'agenda' | 'day'
   board: 'columns' | 'stacked'
-  /** Follow the iPad, or always light / always dark */
-  theme: 'auto' | 'light' | 'dark'
+  /** Follow the sun, follow the iPad, or always light / always dark */
+  theme: 'sun' | 'auto' | 'light' | 'dark'
+  /** A wallpaper that follows the sun */
+  sky: boolean
   /** Soft matte surfaces, or frosted "liquid glass" over a slow colour wash */
   surface: 'soft' | 'glass'
+}
+
+/** Where a piece of work lives: the day job, or freelance in your own time. */
+export type Lane = 'job' | 'freelance'
+
+/** How hard the app pushes you to show up. */
+export type Tone = 'gentle' | 'firm' | 'brutal'
+
+/** A recurring bill that leaves your account each month. */
+export interface Bill {
+  id: string
+  name: string
+  amount: number
+  /** Day of the month it leaves (1–28) */
+  day: number
+}
+
+/** What comes in and goes out every month, apart from freelance work. */
+export interface Budget {
+  /** Monthly pay after tax, in pounds */
+  takeHome: number
+  /** Day of the month you're paid (1–28) */
+  payDay: number
+  rent: number
+  bills: Bill[]
+  /** Set aside for savings each month */
+  savings: number
 }
 
 export interface Settings {
   /** What the app calls you; blank means it just says hello */
   name: string
-  /** 0 = Sunday … 6 = Saturday */
+  /** What it's all for, in your words; shown on Today */
+  why: string
+  /** Do you have a day job? Then 9–5 belongs to it and freelance moves to evenings and weekends */
+  hasJob: boolean
+  /** Job days (0 = Sunday … 6 = Saturday). Without a job: the days you work */
   workDays: number[]
+  /** Job hours. Without a job: your work day */
   dayStart: string
   dayEnd: string
+  /** Freelance on job days, after dinner */
+  eveningStart: string
+  eveningEnd: string
+  /** Freelance on days off */
+  weekendWork: boolean
+  weekendStart: string
+  weekendEnd: string
+  /** How hard the reminders push */
+  tone: Tone
+  /** Salary, rent and bills */
+  budget: Budget
   breaks: Break[]
   /** Working days a task is given to be finished unless told otherwise */
   defaultTaskDays: number
@@ -72,6 +117,8 @@ export interface Project {
   pay: number
   color: string
   archived: boolean
+  /** Job or freelance; blank means freelance */
+  lane?: Lane
   /** Set once the invoice has gone out */
   invoice?: Invoice
 }
@@ -120,6 +167,8 @@ export interface Task {
   resumeNote?: string
   /** Guessed from the title when missing */
   kind?: TaskKind
+  /** Job or freelance; blank means freelance */
+  lane?: Lane
   createdAt: number
 }
 
@@ -171,11 +220,21 @@ export interface Txn {
 /** The day's own notes: what you meant to do with it, and one good thing about it. */
 export interface DayNote {
   intention?: string
+  /** The up-to-three tasks you promised yourself you'd do today (task ids) */
+  musts?: string[]
   goodThing?: string
   /** Little acts of care ticked today: water, move, outside, food */
   care?: string[]
   /** When the day was put away (epoch ms) */
   closedAt?: number
+  /** Minutes spent in stillness today (breathing, body scan, sitting) */
+  still?: number
+  /** Sessions of stillness today */
+  sits?: number
+  /** Up to three good things, written in the evening */
+  good?: string[]
+  /** How you arrived today */
+  mood?: 'heavy' | 'flat' | 'okay' | 'bright'
 }
 
 /** A thought worth keeping that isn't a task (yet). */
@@ -184,6 +243,8 @@ export interface Idea {
   text: string
   projectId: string | null
   at: number
+  /** 'worry' = something set down, not to be done; kept out of the ideas list */
+  kind?: 'worry'
 }
 
 export interface Dump {
@@ -210,6 +271,15 @@ export interface CalEvent {
   until: string
 }
 
+/** A block that came and went without being started. The record that keeps you honest. */
+export interface Miss {
+  /** The id of the block that was missed */
+  id: string
+  date: string
+  taskId: string
+  minutes: number
+}
+
 export interface AppData {
   version: 1
   settings: Settings
@@ -223,6 +293,8 @@ export interface AppData {
   txns: Txn[]
   dumps: Dump[]
   ideas: Idea[]
+  /** Blocks that passed unstarted, newest last */
+  misses: Miss[]
   /** Notes per day, keyed YYYY-MM-DD */
   days: Record<string, DayNote>
   /** YYYY-MM-DD of the last day that was put away */

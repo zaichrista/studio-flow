@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { addTask, closeDay, emptyData, startTimer } from './actions'
+import { addTask, closeDay, startTimer } from './actions'
+import { noJobData } from './fixtures'
 import { buildReminders } from './push'
 import { restCheck } from './rest'
 
 describe('a gentle check outside your hours', () => {
-  const d = emptyData()
+  const d = noJobData()
   it('says nothing during the working day', () => {
     expect(restCheck(d, new Date(2026, 9, 19, 11, 0))).toBeNull()
   })
@@ -27,7 +28,7 @@ describe('a gentle check outside your hours', () => {
 describe('focus notification', () => {
   it('refreshes every 15 minutes under one tag, counting into overtime', () => {
     const at9 = new Date(2026, 9, 19, 9, 0)
-    let d = addTask(emptyData(), { projectId: null, title: 'Final logo artwork', estimateMinutes: 60, dueDate: '2026-10-19' }, new Date(2026, 9, 19, 8, 0))
+    let d = addTask(noJobData(), { projectId: null, title: 'Final logo artwork', estimateMinutes: 60, dueDate: '2026-10-19' }, new Date(2026, 9, 19, 8, 0))
     d = startTimer(d, d.tasks[0].id, d.blocks[0].id, at9)
     const ticks = buildReminders(d, at9.getTime()).filter((r) => r.id.startsWith('tick:'))
     expect(ticks.every((r) => r.tag === 'focus')).toBe(true)

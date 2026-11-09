@@ -170,7 +170,12 @@ export function Settings() {
           <h2 style={{ marginBottom: 18 }}>Your week</h2>
           <div className="stack" style={{ gap: 22 }}>
             <div>
-              <div className="small soft" style={{ marginBottom: 8 }}>Work days</div>
+              <div className="small soft" style={{ marginBottom: 8 }}>Do you have a day job?</div>
+              <Seg label="Day job" value={s.hasJob ? 'yes' : 'no'} options={[['yes', 'Yes'], ['no', 'No']]} onChange={(v) => set({ hasJob: v === 'yes' }, true)} />
+              <div className="faint small" style={{ marginTop: 8 }}>{s.hasJob ? 'Your job hours belong to the job. Freelance is planned for evenings and days off, and job tasks inside the job day.' : 'Everything is planned inside one work day.'}</div>
+            </div>
+            <div>
+              <div className="small soft" style={{ marginBottom: 8 }}>{s.hasJob ? 'Job days' : 'Work days'}</div>
               <div className="dayrow">
                 {DAYS.map(([n, l], i) => (
                   <button key={i} className={`daybtn ${s.workDays.includes(n) ? 'on' : ''}`} onClick={() => toggleDay(n)} aria-pressed={s.workDays.includes(n)}>{l}</button>
@@ -179,13 +184,40 @@ export function Settings() {
             </div>
 
             <div className="lab-row">
-              <Pick name="Day starts" value={s.dayStart} onChange={(v) => set({ dayStart: v }, true)}>
+              <Pick name={s.hasJob ? 'Job starts' : 'Day starts'} value={s.dayStart} onChange={(v) => set({ dayStart: v }, true)}>
                 {timeOptions(5 * 60, toMinutes(s.dayEnd) - s.blockMinutes, 30, s.dayStart).map((t) => <option key={t}>{t}</option>)}
               </Pick>
-              <Pick name="Day ends" value={s.dayEnd} onChange={(v) => set({ dayEnd: v }, true)}>
+              <Pick name={s.hasJob ? 'Job ends' : 'Day ends'} value={s.dayEnd} onChange={(v) => set({ dayEnd: v }, true)}>
                 {timeOptions(toMinutes(s.dayStart) + s.blockMinutes, 23 * 60 + 30, 30, s.dayEnd).map((t) => <option key={t}>{t}</option>)}
               </Pick>
             </div>
+
+            {s.hasJob && (
+              <>
+                <div className="lab-row">
+                  <Pick name="Freelance evenings from" value={s.eveningStart} onChange={(v) => set({ eveningStart: v }, true)}>
+                    {timeOptions(toMinutes(s.dayEnd), 22 * 60, 30, s.eveningStart).map((t) => <option key={t}>{t}</option>)}
+                  </Pick>
+                  <Pick name="until" value={s.eveningEnd} onChange={(v) => set({ eveningEnd: v }, true)}>
+                    {timeOptions(toMinutes(s.eveningStart) + 30, 23 * 60 + 30, 30, s.eveningEnd).map((t) => <option key={t}>{t}</option>)}
+                  </Pick>
+                </div>
+                <div>
+                  <div className="small soft" style={{ marginBottom: 8 }}>Freelance on days off</div>
+                  <Seg label="Weekends" value={s.weekendWork ? 'on' : 'off'} options={[['on', 'Plan work'], ['off', 'Keep them free']]} onChange={(v) => set({ weekendWork: v === 'on' }, true)} />
+                </div>
+                {s.weekendWork && (
+                  <div className="lab-row">
+                    <Pick name="Days off from" value={s.weekendStart} onChange={(v) => set({ weekendStart: v }, true)}>
+                      {timeOptions(6 * 60, 20 * 60, 30, s.weekendStart).map((t) => <option key={t}>{t}</option>)}
+                    </Pick>
+                    <Pick name="until" value={s.weekendEnd} onChange={(v) => set({ weekendEnd: v }, true)}>
+                      {timeOptions(toMinutes(s.weekendStart) + 30, 23 * 60 + 30, 30, s.weekendEnd).map((t) => <option key={t}>{t}</option>)}
+                    </Pick>
+                  </div>
+                )}
+              </>
+            )}
 
             <BreaksEditor s={s} set={set} />
 
@@ -205,7 +237,7 @@ export function Settings() {
               <Pick name="Breathing room after a block" value={s.bufferMinutes} onChange={(v) => set({ bufferMinutes: Number(v) }, true)}>
                 {withCurrent(BUFFER_MINUTES, s.bufferMinutes).map((m) => <option key={m} value={m}>{m === 0 ? 'None, back to back' : `${m} minutes`}</option>)}
               </Pick>
-              <Pick name="Most hours in a week" value={s.maxWeekHours} onChange={(v) => set({ maxWeekHours: Number(v) }, true)}>
+              <Pick name={s.hasJob ? 'Most freelance hours in a week' : 'Most hours in a week'} value={s.maxWeekHours} onChange={(v) => set({ maxWeekHours: Number(v) }, true)}>
                 {withCurrent(WEEK_HOURS, s.maxWeekHours).map((h) => <option key={h} value={h}>{h === 0 ? 'No limit' : `${h} hours`}</option>)}
               </Pick>
             </div>
@@ -234,10 +266,21 @@ export function Settings() {
               </div>
             </div>
             <div>
-              <div className="small soft" style={{ marginBottom: 8 }}>Light & dark</div>
-              <Seg label="Light and dark" value={s.look.theme} options={[['auto', 'Match iPad'], ['light', 'Light'], ['dark', 'Dark']]} onChange={(theme) => setLook({ theme })} />
-              <div className="faint small" style={{ marginTop: 8 }}>The sun in the top corner swaps them in one tap.</div>
+              <div className="small soft" style={{ marginBottom: 8 }}>Follow the sun</div>
+              <Seg label="Follow the sun" value={s.look.theme === 'sun' ? 'on' : 'off'} options={[['on', 'On'], ['off', 'Off']]} onChange={(v) => setLook({ theme: v === 'on' ? 'sun' : 'auto' })} />
+              <div className="faint small" style={{ marginTop: 8 }}>
+                {s.look.theme === 'sun'
+                  ? 'The wallpaper and every colour move through dawn, midday, golden hour, sunset and a starry night. Add ?sky=18:30 to the address to preview any hour.'
+                  : 'Off: your chosen palette, with no moving sky.'}
+              </div>
             </div>
+            {s.look.theme !== 'sun' && (
+              <div>
+                <div className="small soft" style={{ marginBottom: 8 }}>Light & dark</div>
+                <Seg label="Light and dark" value={s.look.theme} options={[['auto', 'Match iPad'], ['light', 'Light'], ['dark', 'Dark']]} onChange={(theme) => setLook({ theme })} />
+                <div className="faint small" style={{ marginTop: 8 }}>The sun in the top corner swaps them in one tap.</div>
+              </div>
+            )}
             <div>
               <div className="small soft" style={{ marginBottom: 8 }}>Surfaces</div>
               <Seg label="Surfaces" value={s.look.surface} options={[['soft', 'Soft'], ['glass', 'Liquid glass']]} onChange={(surface) => setLook({ surface })} />
@@ -278,6 +321,15 @@ export function Settings() {
           <div className="stack">
             <label className="lab">Worker address<input className="field" inputMode="url" autoCapitalize="none" autoCorrect="off" placeholder="https://studio-flow.yourname.workers.dev" value={s.workerUrl} onChange={(e) => set({ workerUrl: e.target.value.trim() })} /></label>
             <label className="lab">Passphrase<input className="field" type="password" autoComplete="off" value={s.appToken} onChange={(e) => set({ appToken: e.target.value })} /></label>
+            <div>
+              <div className="small soft" style={{ marginBottom: 8 }}>How hard should the reminders push?</div>
+              <Seg label="Reminder tone" value={s.tone} options={[['gentle', 'Gentle'], ['firm', 'Firm'], ['brutal', 'Brutal']]} onChange={(tone) => set({ tone })} />
+              <div className="faint small" style={{ marginTop: 8 }}>
+                {s.tone === 'gentle' && 'A soft nudge when a block starts. No chasing.'}
+                {s.tone === 'firm' && 'A clock-in at the start of the job day, plain wording, and one follow-up 10 minutes after a block should have started.'}
+                {s.tone === 'brutal' && 'A clock-in with your rent in it, then follow-ups at 5 and 15 minutes late that say it straight. Blunt about what you did, never about who you are.'}
+              </div>
+            </div>
             <div className="lab-row">
               <Pick name="Heads-up before a block" value={s.headsUpMinutes} onChange={(v) => set({ headsUpMinutes: Number(v) })}>
                 {withCurrent(LEAD_MINUTES, s.headsUpMinutes).map((m) => <option key={m} value={m}>{m === 0 ? 'None, just at the start' : `${m} minutes before`}</option>)}

@@ -15,6 +15,7 @@ import type { PageId } from '../App'
 
 export function Dump({ go }: { go: (p: PageId) => void }) {
   const { data, update } = useStore()
+  const ideas = data.ideas.filter((i) => i.kind !== 'worry')
   const [text, setText] = useState(readDraft)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -143,13 +144,13 @@ Buy Procreate brushes £12`}</pre>
       <div className="section">
         <div className="row-head">
           <h2>Ideas, kept safe</h2>
-          {data.ideas.length > 0 && <span className="faint small">{data.ideas.length}</span>}
+          {ideas.length > 0 && <span className="faint small">{ideas.length}</span>}
         </div>
-        {data.ideas.length === 0 ? (
+        {ideas.length === 0 ? (
           <div className="ideas-empty">Nothing yet. Thoughts that aren't tasks land here, so they don't clutter your calendar or get lost.</div>
         ) : (
           <div className="hairs">
-            {data.ideas.map((i) => (
+            {ideas.map((i) => (
               <div key={i.id} className="idea">
                 <div className="grow">
                   <div className="t">{i.text}</div>

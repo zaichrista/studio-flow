@@ -1,4 +1,4 @@
-import type { Block, CalEvent, Settings, Task } from '../types'
+import type { Block, CalEvent, Lane, Settings, Task } from '../types'
 import { addDays, fromMin, iso, monday, nowMinutes, toMin, weekday } from './dates'
 import { uid } from './id'
 import { kindOf, preferredWindow } from './kind'
@@ -9,12 +9,21 @@ const OVERFLOW_DAYS = 60
 
 export const DEFAULT_SETTINGS: Settings = {
   name: '',
+  why: '',
+  hasJob: true,
   workDays: [1, 2, 3, 4, 5],
   dayStart: '09:00',
   dayEnd: '17:00',
+  eveningStart: '19:00',
+  eveningEnd: '21:30',
+  weekendWork: true,
+  weekendStart: '10:00',
+  weekendEnd: '17:00',
+  tone: 'firm',
+  budget: { takeHome: 0, payDay: 25, rent: 0, bills: [], savings: 0 },
   breaks: [
     { id: 'lunch', name: 'Lunch', start: '13:00', minutes: 60 },
-    { id: 'dinner', name: 'Dinner', start: '18:30', minutes: 60 },
+    { id: 'dinner', name: 'Dinner', start: '18:00', minutes: 60 },
   ],
   defaultTaskDays: 3,
   blockMinutes: 60,
@@ -29,39 +38,72 @@ export const DEFAULT_SETTINGS: Settings = {
   taxPercent: 25,
   workerUrl: '',
   appToken: '',
-  look: { nav: 'auto', density: 'cozy', palette: 'blush', today: 'focus', week: 'grid', board: 'columns', surface: 'soft', theme: 'auto' },
+  look: { nav: 'auto', density: 'cozy', palette: 'blush', today: 'focus', week: 'grid', board: 'columns', surface: 'soft', theme: 'sun', sky: true },
 }
 
 export const isWorkDay = (date: string, s: Settings) => s.workDays.includes(weekday(date))
 
-/** The first `count` working days on or after `from`. */
-export function workDates(from: string, count: number, s: Settings): string[] {
-  if (s.workDays.length === 0) return []
+export const laneOf = (t: Pick<Task, 'lane'> | undefined | null): Lane => t?.lane ?? 'freelance'
+
+export interface Win {
+  from: number
+  to: number
+}
+
+/**
+ * The stretches of a day a lane's work may be placed in, as minutes from
+ * midnight. With a day job, 9–5 is the job's and freelance gets weeknights and
+ * (optionally) days off. Without one there is a single work day.
+ */
+export function windowsOn(date: string, s: Settings, lane: Lane): Win[] {
+  const job = isWorkDay(date, s)
+  const day = { from: toMin(s.dayStart), to: toMin(s.dayEnd) }
+  if (!s.hasJob || lane === 'job') return job ? [day] : []
+  if (job) return toMin(s.eveningEnd) > toMin(s.eveningStart) ? [{ from: toMin(s.eveningStart), to: toMin(s.eveningEnd) }] : []
+  return s.weekendWork && toMin(s.weekendEnd) > toMin(s.weekendStart) ? [{ from: toMin(s.weekendStart), to: toMin(s.weekendEnd) }] : []
+}
+
+/** Every window on a day, job and freelance together, earliest first. */
+export function allWindows(date: string, s: Settings): Win[] {
+  const lanes: Lane[] = s.hasJob ? ['job', 'freelance'] : ['job']
+  return lanes.flatMap((l) => windowsOn(date, s, l)).sort((a, b) => a.from - b.from)
+}
+
+/** The minute the last stretch of work ends that day, or null on a day off. */
+export function lastWindowEnd(date: string, s: Settings): number | null {
+  const w = allWindows(date, s)
+  return w.length ? w[w.length - 1].to : null
+}
+
+export const hasWindow = (date: string, s: Settings, lane: Lane) => windowsOn(date, s, lane).length > 0
+
+/** The first `count` days with room for this lane's work on or after `from`. */
+export function workDates(from: string, count: number, s: Settings, lane: Lane = 'job'): string[] {
   const out: string[] = []
   let d = from
   for (let guard = 0; out.length < count && guard < 400; guard++) {
-    if (isWorkDay(d, s)) out.push(d)
+    if (hasWindow(d, s, lane)) out.push(d)
     d = addDays(d, 1)
   }
   return out
 }
 
-/** Working days from `from` up to and including `to` (at least one). */
-export function workDatesBetween(from: string, to: string, s: Settings): string[] {
-  const first = workDates(from, 1, s)[0]
+/** Days with room from `from` up to and including `to` (at least one, unless there are none). */
+export function workDatesBetween(from: string, to: string, s: Settings, lane: Lane = 'job'): string[] {
+  const first = workDates(from, 1, s, lane)[0]
   if (!first) return []
   const out: string[] = []
   let d = first
   while (d <= to) {
-    if (isWorkDay(d, s)) out.push(d)
+    if (hasWindow(d, s, lane)) out.push(d)
     d = addDays(d, 1)
   }
   return out.length ? out : [first]
 }
 
 /** The due date for a task started on `start` using the default allowance. */
-export function defaultDue(start: string, s: Settings, days = s.defaultTaskDays): string {
-  const dates = workDates(start, Math.max(1, days), s)
+export function defaultDue(start: string, s: Settings, days = s.defaultTaskDays, lane: Lane = 'job'): string {
+  const dates = workDates(start, Math.max(1, days), s, lane)
   return dates[dates.length - 1] ?? start
 }
 
@@ -126,12 +168,16 @@ function busyFor(date: string, blocks: Block[], s: Settings, events: CalEvent[])
   return [...busy, ...fixed, ...rest]
 }
 
-/** Minutes of work blocks and shifts in the Monday–Sunday week holding `date`. */
-export function weekLoad(date: string, blocks: Block[], events: CalEvent[]): number {
+/**
+ * Minutes of work blocks and shifts in the Monday–Sunday week holding `date`.
+ * Given the tasks, job blocks are left out: the weekly limit is about your own time.
+ */
+export function weekLoad(date: string, blocks: Block[], events: CalEvent[], tasks?: Task[]): number {
   const from = monday(date)
   const to = addDays(from, 6)
+  const mine = (b: Block) => !tasks || laneOf(tasks.find((t) => t.id === b.taskId)) !== 'job'
   let total = blocks
-    .filter((b) => b.date >= from && b.date <= to)
+    .filter((b) => b.date >= from && b.date <= to && mine(b))
     .reduce((n, b) => n + b.minutes, 0)
   for (let d = from; d <= to; d = addDays(d, 1)) {
     for (const o of eventsOn(events, d)) if (o.event.kind === 'shift') total += o.to - o.from
@@ -147,19 +193,21 @@ function findSlot(
   earliest: number,
   events: CalEvent[],
   prefer: { from: number; to: number } | null = null,
+  lane: Lane = 'job',
 ): number | null {
   const busy = busyFor(date, blocks, s, events)
-  const end = toMin(s.dayEnd)
-  const first = Math.max(toMin(s.dayStart), Math.ceil(earliest / STEP) * STEP)
   const free = (t: number) => !busy.some((b) => t < b.to && t + minutes > b.from)
-  // The preferred part of the day first, then anywhere that fits.
-  if (prefer) {
-    for (let t = Math.max(first, Math.ceil(prefer.from / STEP) * STEP); t + minutes <= Math.min(end, prefer.to); t += STEP) {
+  for (const win of windowsOn(date, s, lane)) {
+    const first = Math.max(win.from, Math.ceil(earliest / STEP) * STEP)
+    // The preferred part of the day first, then anywhere that fits.
+    if (prefer) {
+      for (let t = Math.max(first, Math.ceil(prefer.from / STEP) * STEP); t + minutes <= Math.min(win.to, prefer.to); t += STEP) {
+        if (free(t)) return t
+      }
+    }
+    for (let t = first; t + minutes <= win.to; t += STEP) {
       if (free(t)) return t
     }
-  }
-  for (let t = first; t + minutes <= end; t += STEP) {
-    if (free(t)) return t
   }
   return null
 }
@@ -182,7 +230,6 @@ export function placePending(
   closedToday = false,
 ): Block[] {
   const cap = (s.maxWeekHours ?? 0) * 60
-  if (s.workDays.length === 0) return blocks
   const today = iso(now)
   const result = blocks.map((b) => ({ ...b }))
   const byTask = new Map<string, Block[]>()
@@ -200,10 +247,13 @@ export function placePending(
 
   for (const task of order) {
     const pending = byTask.get(task.id)!
-    const prefer = preferredWindow(kindOf(task), s)
+    const lane = laneOf(task)
+    // With a day job, freelance fills evenings and weekends; the clearest-hours preference is for the job day.
+    const prefer = s.hasJob && lane === 'freelance' ? null : preferredWindow(kindOf(task), s)
     const from = task.startDate > today ? task.startDate : today
-    const window = workDatesBetween(from, task.dueDate, s)
-    const overflow = workDates(addDays(window[window.length - 1], 1), OVERFLOW_DAYS, s)
+    const window = workDatesBetween(from, task.dueDate, s, lane)
+    if (window.length === 0) continue
+    const overflow = workDates(addDays(window[window.length - 1], 1), OVERFLOW_DAYS, s, lane)
     const W = window.length
 
     pending.forEach((block, i) => {
@@ -215,7 +265,7 @@ export function placePending(
       ]
       for (const date of candidates) {
         if (closedToday && date === today) continue
-        if (cap > 0 && weekLoad(date, result, events) + block.minutes > cap) continue
+        if (lane === 'freelance' && cap > 0 && weekLoad(date, result, events, tasks) + block.minutes > cap) continue
         let earliest = date === today ? Math.ceil(nowMinutes(now) / STEP) * STEP : 0
         // "Not now": nothing before the moment it was pushed back to.
         if (block.after) {
@@ -224,7 +274,7 @@ export function placePending(
           if (date < waitDay) continue
           if (date === waitDay) earliest = Math.max(earliest, nowMinutes(wait))
         }
-        const slot = findSlot(date, block.minutes, result, s, earliest, events, prefer)
+        const slot = findSlot(date, block.minutes, result, s, earliest, events, prefer, lane)
         if (slot !== null) {
           block.date = date
           block.start = fromMin(slot)
@@ -241,6 +291,20 @@ export function placePending(
  * the queue, carrying whatever time is still owed. The block currently being
  * timed (`keepId`) is left alone until the timer stops.
  */
+/** Blocks whose time has passed without a minute being worked on them. */
+export function missedBlocks(blocks: Block[], now: Date = new Date(), keepId: string | null = null): Block[] {
+  const today = iso(now)
+  const mins = nowMinutes(now)
+  return blocks.filter(
+    (b) =>
+      b.id !== keepId &&
+      b.date !== '' &&
+      !b.done &&
+      b.loggedSeconds === 0 &&
+      (b.date < today || (b.date === today && toMin(b.start) + b.minutes <= mins)),
+  )
+}
+
 export function rollOver(blocks: Block[], now: Date = new Date(), keepId: string | null = null): Block[] {
   const today = iso(now)
   const mins = nowMinutes(now)

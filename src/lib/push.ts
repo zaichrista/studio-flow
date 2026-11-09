@@ -2,8 +2,9 @@ import type { AppData, Task } from '../types'
 import { getVapidKey, sendTestPush, syncReminders } from './api'
 import type { Reminder } from './api'
 import { blockStart } from './actions'
-import { addDays, iso, smallDate, stamp } from './dates'
-import { workDates } from './scheduler'
+import { addDays, fromMin, iso, smallDate, stamp } from './dates'
+import { lastWindowEnd, windowsOn, workDates } from './scheduler'
+import { blockLine, clockIn, hash, NAG_AFTER } from './tone'
 import { awaitingPayment, invoiceDue, money, nextTaxDay } from './stats'
 
 const SUB_KEY = 'studio-flow:push'
@@ -90,6 +91,8 @@ export function buildReminders(d: AppData, now = Date.now()): Reminder[] {
   const today = iso(new Date(now))
   const out: Reminder[] = []
   const add = (r: Reminder) => r.at >= now && out.push(r)
+  const tone = s.tone ?? 'firm'
+  const rent = s.budget?.rent ?? 0
 
   for (const b of d.blocks) {
     if (!b.date || b.done || b.date === d.closedOn) continue
@@ -105,12 +108,28 @@ export function buildReminders(d: AppData, now = Date.now()): Reminder[] {
         body: hint ? `Finish the thought you're on. ${hint}` : "Finish the thought you're on, get some water.",
       })
     }
-    add({
-      id: `block:${b.id}`,
-      at: start,
-      title: `Time for ${task.title}`,
-      body: `${hint ? `${hint}. ` : ''}Tap to start the timer.`,
-    })
+    const line = blockLine(tone, 0, task.title, 0, { rent, hint }, hash(b.id))
+    add({ id: `block:${b.id}`, at: start, title: line.title, body: line.body })
+    // Still not started? Firmer and firmer, under the same tag so they replace each other.
+    const begun = b.loggedSeconds > 0 || d.active?.blockId === b.id
+    if (!begun) {
+      NAG_AFTER[tone].forEach((late, i) => {
+        const nag = blockLine(tone, (i + 1) as 1 | 2, task.title, late, { rent, hint }, hash(b.id) + i)
+        add({ id: `nag:${b.id}:${i + 1}`, tag: `block:${b.id}`, at: start + late * 60_000, title: nag.title, body: nag.body })
+      })
+    }
+  }
+
+  // The job day starts with a clock-in nudge (firm and brutal tones).
+  if (s.hasJob) {
+    for (let i = 0; i < 7; i++) {
+      const day = addDays(today, i)
+      const w = windowsOn(day, s, 'job')[0]
+      if (!w || day === d.closedOn) continue
+      const time = fromMin(w.from)
+      const line = clockIn(tone, time, { rent })
+      if (line) add({ id: `clockin:${day}`, at: stamp(day, time), title: line.title, body: line.body })
+    }
   }
 
   const a = d.active
@@ -166,9 +185,11 @@ export function buildReminders(d: AppData, now = Date.now()): Reminder[] {
   }
 
   if (s.shutdownNudge) {
-    for (const day of workDates(today, 7, s)) {
-      if (day === d.closedOn) continue
-      add({ id: `shutdown:${day}`, at: stamp(day, s.dayEnd), title: "That's the day.", body: 'Two minutes to put work away, then the evening is yours.' })
+    for (let i = 0; i < 7; i++) {
+      const day = addDays(today, i)
+      const end = lastWindowEnd(day, s)
+      if (end === null || day === d.closedOn) continue
+      add({ id: `shutdown:${day}`, at: stamp(day, fromMin(end)), title: "That's the day.", body: 'Two minutes to put work away, then the evening is yours.' })
     }
   }
 
