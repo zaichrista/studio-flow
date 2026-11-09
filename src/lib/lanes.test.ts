@@ -122,7 +122,7 @@ describe('upgrading an older save', () => {
     delete (saved.settings as Partial<typeof saved.settings>).hasJob
     const up = upgrade(saved)
     expect(up.settings.hasJob).toBe(true)
-    expect(up.settings.breaks[0].start).toBe('18:00')
+    expect(up.settings.breaks.some((b) => b.id === 'dinner')).toBe(false)
     expect(up.blocks.find((b) => b.id === 'a')!.date).toBe('')
     expect(up.blocks.find((b) => b.id === 'b')!.date).toBe('2030-01-07')
   })

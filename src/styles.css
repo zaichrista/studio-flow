@@ -831,7 +831,7 @@ label.lab { display: grid; gap: 6px; font-size: 13px; color: var(--ink-soft); }
 @media (hover: none) { .blk.evt .grip::after { opacity: .7; } }
 
 /* Budget */
-.bill-row { display: grid; grid-template-columns: 1fr 90px 64px 40px; gap: 8px; align-items: center; }
+.bill-row { display: grid; grid-template-columns: 1fr 110px 40px; gap: 8px; align-items: center; }
 .ledger { display: grid; gap: 2px; }
 .ledger > div { display: flex; justify-content: space-between; gap: 12px; padding: 9px 2px; border-bottom: 1px solid var(--line, rgba(128,128,128,.18)); }
 .ledger > div:last-child { border-bottom: 0; }

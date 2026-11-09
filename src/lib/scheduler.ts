@@ -23,7 +23,6 @@ export const DEFAULT_SETTINGS: Settings = {
   budget: { takeHome: 0, payDay: 25, rent: 0, bills: [], savings: 0 },
   breaks: [
     { id: 'lunch', name: 'Lunch', start: '13:00', minutes: 60 },
-    { id: 'dinner', name: 'Dinner', start: '18:00', minutes: 60 },
   ],
   defaultTaskDays: 3,
   blockMinutes: 60,

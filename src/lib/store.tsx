@@ -35,7 +35,7 @@ export function upgrade(parsed: AppData): AppData {
     pronouns?: string
     notifyLeadMinutes?: number
   }
-  // Older saves had a single lunch; it becomes the first break, and dinner is added.
+  // Older saves had a single lunch; it becomes the first break.
   const breaks =
     saved.breaks ??
     DEFAULT_SETTINGS.breaks.map((b) =>
@@ -52,11 +52,11 @@ export function upgrade(parsed: AppData): AppData {
   void _c
   void _d
   const { clients, projects } = migrateClients(parsed)
-  // First time with a day job: 9–5 becomes the job's, dinner moves up an hour
-  // to make room for evenings, and everything not yet started is re-planned
+  // First time with a day job: 9–5 becomes the job's, and everything not yet started is re-planned
   // into freelance time.
   const gettingJob = saved.hasJob === undefined && !!parsed.settings
-  const kept = gettingJob ? breaks.map((b) => (b.id === 'dinner' && b.start === '18:30' ? { ...b, start: '18:00' } : b)) : breaks
+  // Dinner is no longer a built-in slot; any saved one is dropped (you can still add your own breaks).
+  const kept = breaks.filter((b) => b.id !== 'dinner')
   const blocks = gettingJob
     ? (parsed.blocks ?? []).map((b) => (b.date && !b.done && b.loggedSeconds === 0 ? { ...b, date: '', start: '' } : b))
     : parsed.blocks ?? []

@@ -1,4 +1,4 @@
-/** A daily break the scheduler keeps free (lunch, dinner, a walk…). */
+/** A daily break the scheduler keeps free (lunch, a walk…). */
 export interface Break {
   id: string
   name: string
@@ -61,7 +61,7 @@ export interface Settings {
   /** Job hours. Without a job: your work day */
   dayStart: string
   dayEnd: string
-  /** Freelance on job days, after dinner */
+  /** Freelance on job days, in the evening */
   eveningStart: string
   eveningEnd: string
   /** Freelance on days off */

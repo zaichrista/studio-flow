@@ -147,8 +147,8 @@ const overlaps = (a: { start: string; minutes: number }, from: string, to: strin
 }
 
 describe('breaks', () => {
-  it('keeps dinner free when the working day runs late', () => {
-    const late = { ...S, dayEnd: '21:00', bufferMinutes: 0 }
+  it('keeps a later break free when the working day runs late', () => {
+    const late = { ...S, dayEnd: '21:00', bufferMinutes: 0, breaks: [...S.breaks, { id: 'supper', name: 'Supper', start: '18:00', minutes: 60 }] }
     const t = task({ estimateMinutes: 60 * 12, dueDate: '2026-10-19' })
     const placed = placePending([t], makeBlocks(t, late), late, monday8)
     const today = placed.filter((b) => b.date === '2026-10-19')

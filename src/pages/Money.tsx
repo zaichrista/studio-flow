@@ -72,7 +72,6 @@ function TxnSheet({ onClose }: { onClose: () => void }) {
 }
 
 const num = (v: string) => Math.max(0, Number(v.replace(/[£,\s]/g, '')) || 0)
-const ordinal = (n: number) => `${n}${[, 'st', 'nd', 'rd'][n % 10 > 3 || Math.floor(n / 10) === 1 ? 0 : n % 10] ?? 'th'}`
 
 /** Salary, rent and the bills that leave every month. */
 function BudgetSheet({ onClose }: { onClose: () => void }) {
@@ -82,28 +81,20 @@ function BudgetSheet({ onClose }: { onClose: () => void }) {
   const [payDay, setPayDay] = useState(String(b.payDay))
   const [rent, setRent] = useState(b.rent ? String(b.rent) : '')
   const [savings, setSavings] = useState(b.savings ? String(b.savings) : '')
-  const [bills, setBills] = useState<{ id: string; name: string; amount: string; day: string }[]>(
-    b.bills.map((x) => ({ id: x.id, name: x.name, amount: String(x.amount), day: String(x.day) })),
-  )
-  const change = (id: string, patch: Partial<{ name: string; amount: string; day: string }>) =>
-    setBills(bills.map((x) => (x.id === id ? { ...x, ...patch } : x)))
   return (
-    <Sheet title="Salary, rent and bills" onClose={onClose}>
+    <Sheet title="Salary, rent and savings" onClose={onClose}>
       <form
         className="stack"
         onSubmit={(e) => {
           e.preventDefault()
-          const clean: Bill[] = bills
-            .filter((x) => x.name.trim() && num(x.amount) > 0)
-            .map((x) => ({ id: x.id, name: x.name.trim(), amount: num(x.amount), day: Math.min(28, Math.max(1, Math.round(Number(x.day)) || 1)) }))
           update((d) => ({
             ...d,
             settings: {
               ...d.settings,
-              budget: { takeHome: num(takeHome), payDay: Math.min(28, Math.max(1, Math.round(Number(payDay)) || 25)), rent: num(rent), savings: num(savings), bills: clean },
+              budget: { ...d.settings.budget, takeHome: num(takeHome), payDay: Math.min(28, Math.max(1, Math.round(Number(payDay)) || 25)), rent: num(rent), savings: num(savings) },
             },
           }))
-          toast('Budget saved.')
+          toast('Saved.')
           onClose()
         }}
       >
@@ -115,20 +106,47 @@ function BudgetSheet({ onClose }: { onClose: () => void }) {
           <label className="lab">Rent (£)<input className="field" inputMode="decimal" value={rent} onChange={(e) => setRent(e.target.value)} placeholder="0" /></label>
           <label className="lab">Savings a month (£)<input className="field" inputMode="decimal" value={savings} onChange={(e) => setSavings(e.target.value)} placeholder="0" /></label>
         </div>
-        <div className="small soft">Bills each month</div>
-        {bills.map((x) => (
-          <div key={x.id} className="bill-row">
-            <input className="field" aria-label="Bill name" value={x.name} onChange={(e) => change(x.id, { name: e.target.value })} placeholder="Phone" />
-            <input className="field" aria-label="Amount" inputMode="decimal" value={x.amount} onChange={(e) => change(x.id, { amount: e.target.value })} placeholder="£" />
-            <input className="field" aria-label="Day of the month" inputMode="numeric" value={x.day} onChange={(e) => change(x.id, { day: e.target.value })} placeholder="Day" />
-            <button type="button" className="icon-btn" aria-label={`Remove ${x.name || 'bill'}`} onClick={() => setBills(bills.filter((y) => y.id !== x.id))}><IconClose /></button>
-          </div>
-        ))}
-        <div><button type="button" className="btn quiet small" onClick={() => setBills([...bills, { id: uid(), name: '', amount: '', day: '1' }])}>Add a bill</button></div>
         <div className="faint small">Use take-home pay, after tax and pension. Your salary is already taxed, so only freelance money has tax set aside.</div>
         <button className="btn" style={{ marginTop: 8 }}>Save</button>
       </form>
     </Sheet>
+  )
+}
+
+/** One monthly bill, edited in place: every change is saved as you go. */
+function BillRow({ bill }: { bill: Bill }) {
+  const { update } = useStore()
+  const [name, setName] = useState(bill.name)
+  const [amount, setAmount] = useState(bill.amount ? String(bill.amount) : '')
+  const save = (patch: Partial<Bill>) =>
+    update((d) => ({ ...d, settings: { ...d.settings, budget: { ...d.settings.budget, bills: d.settings.budget.bills.map((x) => (x.id === bill.id ? { ...x, ...patch } : x)) } } }))
+  return (
+    <div className="bill-row" onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLElement).blur()}>
+      <input className="field" aria-label="Bill name" value={name} placeholder="Name" onChange={(e) => { setName(e.target.value); save({ name: e.target.value }) }} onBlur={(e) => save({ name: e.target.value.trim() })} />
+      <input className="field" aria-label="Amount" inputMode="decimal" value={amount} placeholder="£" onChange={(e) => { setAmount(e.target.value); save({ amount: num(e.target.value) }) }} />
+      <button type="button" className="icon-btn" aria-label={`Remove ${bill.name || 'bill'}`} onClick={() => update((d) => ({ ...d, settings: { ...d.settings, budget: { ...d.settings.budget, bills: d.settings.budget.bills.filter((x) => x.id !== bill.id) } } }))}><IconClose /></button>
+    </div>
+  )
+}
+
+/** The bills that leave every month, always in view and always editable. */
+function BillsSection() {
+  const { data, update } = useStore()
+  const bills = data.settings.budget.bills
+  const add = () => update((d) => ({ ...d, settings: { ...d.settings, budget: { ...d.settings.budget, bills: [...d.settings.budget.bills, { id: uid(), name: '', amount: 0, day: 1 }] } } }))
+  return (
+    <div className="section">
+      <div className="row-head">
+        <h2>Bills each month</h2>
+        <span className="faint small">{bills.length ? `${money(bills.reduce((a, x) => a + x.amount, 0))} a month` : ''}</span>
+      </div>
+      <div className="stack">
+        {bills.length === 0 && <div className="faint small">No bills yet. Add one and it’s counted straight away.</div>}
+        {bills.map((x) => <BillRow key={x.id} bill={x} />)}
+        <div><button className="btn quiet small" onClick={add}>Add a bill</button></div>
+        <div className="faint small">Just a name and what it costs each month. Changes save as you type.</div>
+      </div>
+    </div>
   )
 }
 
@@ -185,7 +203,7 @@ export function Money() {
           </div>
         </div>
         <div><div className="eyebrow">Freelance in</div><div className="big">{money(bud.freelance)}</div><div className="faint small" style={{ marginTop: 6 }}>{money(bud.tax)} set aside for tax</div></div>
-        <div><div className="eyebrow">Spent</div><div className="big">{money(bud.spent)}</div>{bud.next && <div className="faint small" style={{ marginTop: 6 }}>Next out: {bud.next.name} {money(bud.next.amount)}, the {ordinal(bud.next.day)}</div>}</div>
+        <div><div className="eyebrow">Spent</div><div className="big">{money(bud.spent)}</div></div>
       </div>
 
       {bud.set && (
@@ -197,7 +215,7 @@ export function Money() {
               <div><span>Freelance received</span><span className="num pos">+{money(bud.freelance)}</span></div>
               <div><span>Tax on freelance ({pct}%)</span><span className="num">−{money(bud.tax)}</span></div>
               <div><span>Rent</span><span className="num">−{money(bud.rent)}</span></div>
-              {data.settings.budget.bills.map((x) => <div key={x.id}><span>{x.name} <span className="faint small">the {ordinal(x.day)}</span></span><span className="num">−{money(x.amount)}</span></div>)}
+              {data.settings.budget.bills.map((x) => <div key={x.id}><span>{x.name || 'Bill'}</span><span className="num">−{money(x.amount)}</span></div>)}
               {bud.savings > 0 && <div><span>Savings</span><span className="num">−{money(bud.savings)}</span></div>}
               <div><span>Spent so far</span><span className="num">−{money(bud.spent)}</span></div>
               <div className="total"><span>Left to spend</span><span className={`num ${bud.left < 0 ? 'neg' : ''}`}>{money(bud.left)}</span></div>
@@ -205,6 +223,8 @@ export function Money() {
           </div>
         </div>
       )}
+
+      <BillsSection />
 
       <div className="section">
         <div className="row-head"><h2>Tax pot</h2></div>
