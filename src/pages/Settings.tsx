@@ -346,6 +346,14 @@ export function Settings() {
               <div className="small soft" style={{ marginBottom: 8 }}>End-of-day nudge at {s.dayEnd}</div>
               <Seg label="End-of-day nudge" value={s.shutdownNudge ? 'on' : 'off'} options={[['on', 'On'], ['off', 'Off']]} onChange={(v) => set({ shutdownNudge: v === 'on' })} />
             </div>
+            <div>
+              <div className="small soft" style={{ marginBottom: 8 }}>Break reminders</div>
+              <Seg label="Break reminders" value={s.breakNudges ? 'on' : 'off'} options={[['on', 'Nudge me at each break'], ['off', 'Off']]} onChange={(v) => set({ breakNudges: v === 'on' })} />
+            </div>
+            <Pick name="Stand-and-stretch nudge" value={s.moveEvery} onChange={(v) => set({ moveEvery: Number(v) })}>
+              {withCurrent([0, 45, 60, 90, 120], s.moveEvery).map((m) => <option key={m} value={m}>{m === 0 ? 'Off' : `Every ${m} minutes of work`}</option>)}
+            </Pick>
+            <div className="faint small">Breaks and stretches get a gentle nudge that opens Wellness. They never fire during a break, and never on a day you’ve put away.</div>
             <div className="faint small">Each nudge says what to start with: where you left off, the first step, or the next subtask. Invoice due dates and tax days get a quiet morning nudge too. The worker checks every 5 minutes, so nudges land within a few minutes of their time.</div>
             <div className={`notice ${push === 'on' ? 'ok' : ''}`}>{PUSH_COPY[push]}</div>
             <div className="row" style={{ flexWrap: 'wrap' }}>

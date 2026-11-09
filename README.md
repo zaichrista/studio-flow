@@ -13,6 +13,8 @@ A calm planner for a designer's messy brain. Put everything down in one place; i
 - **Late-night note** — after 11pm Today quietly says it's late and offers to say goodnight; nothing is blocked.
 - **Stillness** — breathing, a 5-minute body scan, sitting (3–20 min), three good things and "set it down" for worries. It leads Today on days off and once work is put away, and keeps a weekly tally.
 - **Empty your head** — the ＋ sheet is now a sweep: one thought at a time, typed or spoken, each tagged To do / Idea / Spend / Set down (tap to change), with prompts (Work, Money, People, Home, Someday, Weighing on me).
+- **Wellness** — its own page for breaks: a guided one-minute stretch and three-minute desk reset (eyes, neck, shoulders, wrists, twist, stand), breathing (4-6, box), body scan, gratitude with a look back, and set-it-down for worries. Today shows a banner when a break is on.
+- **Break reminders** — a nudge as each break starts and a stand-and-stretch every 90 minutes of work (Settings → Notifications), never during a break or on a day you've put away. Tapping one opens Wellness.
 - **A Today that's yours** — your name, a line for what it's all for, how you're arriving, and fewer boxes.
 - **Scheduling** — each task gets 3 working days by default and is split into 60-minute blocks, spread across your work days (all adjustable in Settings). Lunch is kept free.
 - **Breaks and outside events** — lunch (and any other daily break you add) are kept free. Add work shifts, appointments and personal plans, one-off or repeating weekly; your freelance blocks are planned around them, and anything already booked in that time moves to the next free slot.

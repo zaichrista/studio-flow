@@ -88,6 +88,10 @@ export interface Settings {
   wrapUpMinutes: number
   /** A nudge at the end of the work day to put work away */
   shutdownNudge: boolean
+  /** A nudge when each break starts */
+  breakNudges: boolean
+  /** A stand-and-stretch nudge every this many minutes of work (0 = off) */
+  moveEvery: number
   /** Play the opening animation on every launch, or only the first of the day */
   splash: 'always' | 'daily'
   /** When your head is clearest: focus work goes there, ideas and admin the other half */

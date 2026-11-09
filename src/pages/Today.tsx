@@ -13,6 +13,7 @@ import { useDayMinutes } from '../components/Sky'
 import { openCapture } from '../components/QuickCapture'
 import { isLateNight } from '../lib/sky'
 import { isOffDay } from '../lib/stillness'
+import { breakNow } from '../lib/wellness'
 import { listenShutdown, ShutdownSheet } from '../components/Shutdown'
 import { winsToday, worthKnowing } from '../lib/today'
 import { Ring } from '../components/Icons'
@@ -144,6 +145,15 @@ export function Today({ go }: { go: (p: PageId) => void }) {
               : 'Nothing planned today. That is allowed.'}
       </p>
 
+      {!closed && !late && (() => {
+        const br = breakNow(data, dayMin, today)
+        return br ? (
+          <div className="notice ok row" style={{ flexWrap: 'wrap', marginBottom: 24 }}>
+            <span className="grow">{br.on ? `${br.name} time. Step away from the screen.` : `${br.name} is coming up. A stretch first?`}</span>
+            <button className="btn small" onClick={() => go('wellness')}>Wellness</button>
+          </div>
+        ) : null
+      })()}
       {late && <NightNote minutes={dayMin} />}
       {quiet && <Stillness closed={closed} />}
 

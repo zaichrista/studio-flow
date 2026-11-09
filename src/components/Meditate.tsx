@@ -4,6 +4,8 @@ import { useStore } from '../lib/store'
 import { releaseWorry, setDown } from '../lib/sweep'
 import { SCAN_LINES, SESSIONS, SIT_LINES, logStill, saveGood, suggest } from '../lib/stillness'
 import type { Session } from '../lib/stillness'
+import { ROUTINES } from '../lib/wellness'
+import type { Routine } from '../lib/wellness'
 import { Sheet } from './Sheet'
 import { useDayMinutes } from './Sky'
 import { toast } from './Toast'
@@ -62,6 +64,61 @@ function Timed({ minutes, lines, every, onDone, onClose }: { minutes: number; li
     <div className="breathe sit">
       <div className={`lung still ${finished ? 'rest' : ''}`}><span>{finished ? 'Lovely.' : `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`}</span></div>
       <p className="sit-line" key={line}>{line}</p>
+      <button className="btn quiet" onClick={onClose}>{finished ? 'Back to the day' : 'End here'}</button>
+    </div>
+  )
+}
+
+/** Box breathing: in, hold, out, hold, four counts each, four rounds. */
+function Box({ onDone, onClose }: { onDone: (s: number) => void; onClose: () => void }) {
+  const secs = useElapsed(onDone)
+  const rounds = 4
+  const total = rounds * 16
+  const finished = secs >= total
+  const phase = Math.floor((secs % 16) / 4)
+  const label = finished ? 'Lovely.' : ['Breathe in', 'Hold', 'Breathe out', 'Hold'][phase]
+  const big = !finished && (phase === 0 || phase === 1)
+  return (
+    <div className="breathe">
+      <div className={`lung box ${finished ? 'rest' : ''}`} style={{ transform: `scale(${big ? 1.1 : 0.82})`, transition: 'transform 4s linear' }}>
+        <span>{label}</span>
+      </div>
+      <div className="faint small">{finished ? 'Steady and even. Carry it with you.' : `Count to four each time. Round ${Math.min(rounds, Math.floor(secs / 16) + 1)} of ${rounds}.`}</div>
+      <button className="btn quiet" onClick={onClose}>{finished ? 'Back to the day' : 'That’s enough for now'}</button>
+    </div>
+  )
+}
+
+/** A guided run of desk movements, one at a time, each with a countdown and a skip. */
+function Desk({ routine, onDone, onClose }: { routine: Routine; onDone: (s: number) => void; onClose: () => void }) {
+  const secs = useElapsed(onDone)
+  const [skipped, setSkipped] = useState(0)
+  const t = secs + skipped
+  let at = 0
+  let i = 0
+  for (; i < routine.moves.length; i++) {
+    if (t < at + routine.moves[i].seconds) break
+    at += routine.moves[i].seconds
+  }
+  const finished = i >= routine.moves.length
+  const move = routine.moves[Math.min(i, routine.moves.length - 1)]
+  const left = finished ? 0 : at + move.seconds - t
+  return (
+    <div className="breathe sit">
+      {finished ? (
+        <>
+          <div className="lung still rest"><span>Lovely.</span></div>
+          <p className="sit-line">All done. Drink some water, and go back when you’re ready.</p>
+        </>
+      ) : (
+        <>
+          <div className="faint small">{i + 1} of {routine.moves.length}</div>
+          <div className="lung still"><span>{left}s</span></div>
+          <h3 className="desk-name">{move.name}</h3>
+          <p className="sit-line" key={move.id}>{move.how}</p>
+          <button className="btn ghost small" onClick={() => setSkipped(skipped + left)}>Skip this one</button>
+        </>
+      )}
       <button className="btn quiet" onClick={onClose}>{finished ? 'Back to the day' : 'End here'}</button>
     </div>
   )
@@ -153,6 +210,9 @@ export function Meditate({ start, onClose }: { start?: Session['id']; onClose: (
         </div>
       )}
       {mode === 'breathe' && <Breathe onDone={log} onClose={onClose} />}
+      {mode === 'box' && <Box onDone={log} onClose={onClose} />}
+      {mode === 'stretch' && <Desk routine={ROUTINES[0]} onDone={log} onClose={onClose} />}
+      {mode === 'desk' && <Desk routine={ROUTINES[1]} onDone={log} onClose={onClose} />}
       {mode === 'scan' && <Timed minutes={5} lines={SCAN_LINES} every={25} onDone={log} onClose={onClose} />}
       {mode === 'sit' && sitMin === null && (
         <div className="stack">

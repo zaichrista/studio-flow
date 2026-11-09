@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
-import { IconChevronDown, IconChevronLeft, IconGear, IconMoney, IconPlus, IconToday, IconWeek, IconWork, Mark } from './components/Icons'
+import { IconChevronDown, IconChevronLeft, IconGear, IconMoney, IconPlus, IconToday, IconWeek, IconWellness, IconWork, Mark } from './components/Icons'
 import { FocusMode, openFocus } from './components/FocusMode'
 import { RestGuard } from './components/RestGuard'
 import { openCapture, QuickCapture } from './components/QuickCapture'
@@ -16,6 +16,7 @@ import { Dump } from './pages/Dump'
 import { Money } from './pages/Money'
 import { Settings } from './pages/Settings'
 import { Today } from './pages/Today'
+import { Wellness } from './pages/Wellness'
 import { Sky, useDayMinutes } from './components/Sky'
 import { StillnessHost } from './components/Meditate'
 import { isDarkSky } from './lib/sky'
@@ -23,16 +24,17 @@ import { Week } from './pages/Week'
 import { Work } from './pages/Work'
 
 /** 'dump' is the careful sorter, reached from the ＋ sheet rather than the menu. */
-export type PageId = 'today' | 'dump' | 'week' | 'work' | 'money' | 'settings'
+export type PageId = 'today' | 'dump' | 'week' | 'work' | 'money' | 'wellness' | 'settings'
 
-/** Four places to be, and settings tucked away behind a gear. */
+/** Five places to be, and settings tucked away behind a gear. */
 const NAV: { id: PageId; label: string; icon: () => ReactElement }[] = [
   { id: 'today', label: 'Today', icon: IconToday },
   { id: 'week', label: 'Calendar', icon: IconWeek },
   { id: 'work', label: 'Projects', icon: IconWork },
   { id: 'money', label: 'Money', icon: IconMoney },
+  { id: 'wellness', label: 'Wellness', icon: IconWellness },
 ]
-const PAGES: PageId[] = ['today', 'week', 'work', 'money', 'settings']
+const PAGES: PageId[] = ['today', 'week', 'work', 'money', 'wellness', 'settings']
 
 const PAGE_KEY = 'studio-flow:page'
 const MENU_KEY = 'studio-flow:menu'
@@ -160,6 +162,8 @@ export default function App() {
       } else if (tag === 'focus' || tag === 'trial') {
         go('today')
         if (d.active) openFocus()
+      } else if (tag === 'wellness') {
+        go('wellness')
       } else if (tag.startsWith('inv:') || tag.startsWith('tax:')) {
         go('money')
       } else if (tag) {
@@ -193,6 +197,7 @@ export default function App() {
     week: <Week />,
     work: <Work go={go} />,
     money: <Money />,
+    wellness: <Wellness />,
     settings: <Settings />,
   }[page]
 

@@ -32,6 +32,8 @@ export const DEFAULT_SETTINGS: Settings = {
   wrapUpMinutes: 5,
   progressMinutes: 15,
   shutdownNudge: true,
+  breakNudges: true,
+  moveEvery: 90,
   clearest: 'morning',
   splash: 'always',
   taxPercent: 25,

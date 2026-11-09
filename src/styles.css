@@ -1014,3 +1014,15 @@ html[data-sky="on"] body { background: transparent; }
 :root[data-sun="on"][data-theme="dark"] .btn { color: #2a1a0a; }
 :root[data-sun="on"] .sky .hills { background: radial-gradient(120% 100% at 18% 100%, color-mix(in srgb, var(--sun-b) 32%, transparent) 0 55%, transparent 56%), radial-gradient(110% 100% at 78% 100%, color-mix(in srgb, var(--sun-a) 28%, transparent) 0 52%, transparent 53%); }
 :root[data-sun="on"] .btn.clay, :root[data-sun="on"] .capture-fab { color: #3a1a00; }
+
+/* ---------- wellness ---------- */
+.lung.box { animation: none; }
+.desk-name { font: 400 22px var(--serif); margin: 0; }
+.routines { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; margin-bottom: 18px; }
+.routine { display: grid; gap: 6px; text-align: left; padding: 18px 20px; border-radius: var(--radius-sm); background: var(--surface); box-shadow: inset 0 0 0 1px var(--hair); transition: transform var(--t-fast) var(--ease), background var(--t-med) var(--ease); }
+.routine:hover { background: var(--sage-wash); }
+.routine:active { transform: scale(.98); }
+.routine b { font: 400 18px var(--serif); }
+.gratitude-q { font: italic 300 22px/1.4 var(--serif); margin: 0 0 14px; max-width: 34ch; }
+.page.wellness .stillness { margin-top: 0; }
+@media (max-width: 560px) { .dock .navbtn { padding: 8px 9px; } }

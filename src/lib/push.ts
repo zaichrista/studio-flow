@@ -3,7 +3,8 @@ import { getVapidKey, sendTestPush, syncReminders } from './api'
 import type { Reminder } from './api'
 import { blockStart } from './actions'
 import { addDays, fromMin, iso, smallDate, stamp } from './dates'
-import { lastWindowEnd, windowsOn, workDates } from './scheduler'
+import { allWindows, lastWindowEnd, windowsOn, workDates } from './scheduler'
+import { breakLine, moveTimes, nextDays, standLine } from './wellness'
 import { blockLine, clockIn, hash, NAG_AFTER } from './tone'
 import { awaitingPayment, invoiceDue, money, nextTaxDay } from './stats'
 
@@ -181,6 +182,17 @@ export function buildReminders(d: AppData, now = Date.now()): Reminder[] {
         })
       }
       add({ id: 'timer', tag: 'focus', at, title: 'Block complete', body: `${task.title}. That's your time. Stop when you're ready, then step away for a bit.` })
+    }
+  }
+
+  // Look after yourself: a nudge as each break starts, and a stand-and-stretch every so often.
+  for (const day of nextDays(today, 7)) {
+    if (day === d.closedOn || allWindows(day, s).length === 0) continue
+    if (s.breakNudges) {
+      for (const b of s.breaks) add({ id: `break:${day}:${b.id}`, tag: 'wellness', at: stamp(day, b.start), title: `${b.name}: step away`, body: breakLine(hash(day + b.id)) })
+    }
+    for (const m of moveTimes(d, day, s.moveEvery)) {
+      add({ id: `move:${day}:${m}`, tag: 'wellness', at: stamp(day, fromMin(m)), title: 'Stand up for two minutes', body: standLine(hash(day) + m) })
     }
   }
 

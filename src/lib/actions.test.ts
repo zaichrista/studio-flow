@@ -110,7 +110,7 @@ describe('putting the day away', () => {
 describe('reminders', () => {
   it('sends a heads-up and a start nudge naming the first step', () => {
     let d = addTask(noJobData(), { projectId: null, title: 'Moodboard', estimateMinutes: 60, firstStep: 'Open Pinterest board', dueDate: '2026-10-19' }, monday8)
-    d = { ...d, settings: { ...d.settings, shutdownNudge: false, tone: 'gentle' } }
+    d = { ...d, settings: { ...d.settings, shutdownNudge: false, tone: 'gentle', breakNudges: false, moveEvery: 0 } }
     const r = buildReminders(d, monday8.getTime()).filter((x) => !x.id.startsWith('tax:'))
     expect(r.map((x) => x.id.split(':')[0])).toEqual(['soon', 'block'])
     expect(r[0].title).toBe('In 10 minutes: Moodboard')

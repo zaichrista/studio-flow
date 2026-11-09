@@ -87,3 +87,44 @@ describe('Follow the sun migration', () => {
     expect(upgrade(chosen).settings.look.theme).toBe('dark')
   })
 })
+
+import { breakNow, moveTimes, routineSeconds, ROUTINES, recentGood } from './wellness'
+import { buildReminders } from './push'
+
+describe('wellness', () => {
+  it('knows when a break is on or coming up', () => {
+    const d = emptyData()
+    d.settings.weekendWork = false
+    expect(breakNow(d, 13 * 60 + 10, '2026-10-19')).toMatchObject({ name: 'Lunch', on: true })
+    expect(breakNow(d, 12 * 60 + 45, '2026-10-19')).toMatchObject({ on: false })
+    expect(breakNow(d, 10 * 60, '2026-10-19')).toBeNull()
+    expect(breakNow(d, 13 * 60 + 10, '2026-10-24')).toBeNull()
+  })
+
+  it('stretches every so often but never during a break', () => {
+    const d = emptyData()
+    const times = moveTimes(d, '2026-10-19', 90)
+    expect(times.length).toBeGreaterThan(2)
+    expect(times.every((t) => !(t >= 13 * 60 - 10 && t < 14 * 60))).toBe(true)
+    expect(moveTimes(d, '2026-10-19', 0)).toEqual([])
+  })
+
+  it('has real routines and keeps a gratitude history', () => {
+    expect(routineSeconds(ROUTINES[1])).toBeGreaterThanOrEqual(170)
+    let d = emptyData()
+    d = saveGood(d, '2026-10-18', ['sun'])
+    d = saveGood(d, '2026-10-19', ['tea'])
+    expect(recentGood(d, 5, '2026-10-19').map((g) => g.date)).toEqual(['2026-10-19', '2026-10-18'])
+  })
+
+  it('reminds you to take breaks and move, and can be switched off', () => {
+    const d = emptyData()
+    const now = new Date(2026, 9, 19, 7, 0).getTime()
+    const on = buildReminders(d, now).filter((r) => r.tag === 'wellness')
+    expect(on.some((r) => r.id.startsWith('break:'))).toBe(true)
+    expect(on.some((r) => r.id.startsWith('move:'))).toBe(true)
+    d.settings.breakNudges = false
+    d.settings.moveEvery = 0
+    expect(buildReminders(d, now).some((r) => r.tag === 'wellness')).toBe(false)
+  })
+})

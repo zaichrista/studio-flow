@@ -6,7 +6,7 @@ import { allWindows } from './scheduler'
 export const isOffDay = (d: AppData, day = iso()): boolean => allWindows(day, d.settings).length === 0
 
 export interface Session {
-  id: 'breathe' | 'scan' | 'sit' | 'good' | 'down'
+  id: 'breathe' | 'box' | 'scan' | 'sit' | 'good' | 'down' | 'stretch' | 'desk'
   name: string
   blurb: string
   minutes: number
@@ -14,6 +14,9 @@ export interface Session {
 
 export const SESSIONS: Session[] = [
   { id: 'breathe', name: 'One slow minute', blurb: 'In for 4, out for 6.', minutes: 1 },
+  { id: 'box', name: 'Box breathing', blurb: 'In, hold, out, hold. Four counts each.', minutes: 1 },
+  { id: 'stretch', name: 'One-minute stretch', blurb: 'Neck, shoulders and a big reach.', minutes: 1 },
+  { id: 'desk', name: 'Three-minute desk reset', blurb: 'Eyes, neck, shoulders, wrists, a twist and a stand.', minutes: 3 },
   { id: 'scan', name: 'Body scan', blurb: 'Head to toe, letting go as you go.', minutes: 5 },
   { id: 'sit', name: 'Sit quietly', blurb: 'No goal. Just stay.', minutes: 10 },
   { id: 'good', name: 'Three good things', blurb: 'What went well, however small.', minutes: 0 },
