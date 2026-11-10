@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { openStillness } from '../components/Meditate'
 import { useDayMinutes } from '../components/Sky'
 import { fmtDuration, iso, longDate } from '../lib/dates'
+import { gong, prime } from '../lib/chime'
 import { useStore } from '../lib/store'
 import { SESSIONS, stillWeek } from '../lib/stillness'
 import { breakNow, DESK, gratitudePrompt, recentGood, routineSeconds, ROUTINES } from '../lib/wellness'
@@ -11,7 +12,7 @@ const hm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${Stri
 
 /** A place of its own for looking after yourself on a break: stretch, breathe, be grateful. */
 export function Wellness() {
-  const { data } = useStore()
+  const { data, update } = useStore()
   const [open, setOpen] = useState<string | null>(null)
   const today = iso()
   const minutes = useDayMinutes()
@@ -106,7 +107,21 @@ export function Wellness() {
         )}
       </div>
 
-      <div className="faint small" style={{ marginTop: 28 }}>Break reminders are set in Settings → Notifications.</div>
+      <div className="row" style={{ marginTop: 28, flexWrap: 'wrap' }}>
+        <button
+          className="btn ghost small"
+          aria-pressed={data.settings.chime}
+          onClick={() => {
+            prime()
+            const next = !data.settings.chime
+            update((d) => ({ ...d, settings: { ...d.settings, chime: next } }))
+            if (next) gong('step')
+          }}
+        >
+          Gong: {data.settings.chime ? 'on' : 'off'}
+        </button>
+        <span className="faint small">A soft ring marks the start of each exercise, every move in a routine, and the end. Break reminders are in Settings → Notifications.</span>
+      </div>
     </div>
   )
 }

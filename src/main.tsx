@@ -26,7 +26,17 @@ if (splash) {
   } catch {
     /* ignore */
   }
+  // What it's all for, in your words, if you've written it.
+  let why = ''
+  try {
+    const saved = JSON.parse(localStorage.getItem('studio-flow:v2') ?? '{}') as { settings?: { why?: string } }
+    why = (saved.settings?.why ?? '').trim()
+  } catch {
+    /* ignore */
+  }
+  const timers: number[] = []
   const hide = () => {
+    timers.forEach(clearTimeout)
     splash.classList.add('out')
     setTimeout(() => splash.remove(), 1100)
   }
@@ -34,6 +44,32 @@ if (splash) {
   if (seenToday) {
     splash.classList.add('quick')
     hide()
+  } else if (why) {
+    // The mark settles (about 3s), gives way to the line, which types out and stays for a beat or two.
+    const target = splash.querySelector<HTMLElement>('.why p')!
+    const box = splash.querySelector<HTMLElement>('.why')!
+    const calm = matchMedia('(prefers-reduced-motion: reduce)').matches
+    const step = calm ? 0 : Math.max(28, Math.min(70, 3200 / why.length))
+    const start = Math.max(0, 3100 - performance.now())
+    timers.push(window.setTimeout(() => splash.classList.add('why-on'), start))
+    timers.push(
+      window.setTimeout(() => {
+        let i = 0
+        const type = () => {
+          target.textContent = why.slice(0, ++i)
+          if (i < why.length) timers.push(window.setTimeout(type, step))
+          else {
+            box.classList.add('done')
+            timers.push(window.setTimeout(hide, 2200))
+          }
+        }
+        if (step === 0) {
+          target.textContent = why
+          box.classList.add('done')
+          timers.push(window.setTimeout(hide, 2600))
+        } else type()
+      }, start + 900),
+    )
   } else {
     setTimeout(hide, Math.max(300, 3400 - performance.now()))
   }

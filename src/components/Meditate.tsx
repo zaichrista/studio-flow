@@ -4,6 +4,8 @@ import { useStore } from '../lib/store'
 import { releaseWorry, setDown } from '../lib/sweep'
 import { SCAN_LINES, SESSIONS, SIT_LINES, logStill, saveGood, suggest } from '../lib/stillness'
 import type { Session } from '../lib/stillness'
+import { gong, prime } from '../lib/chime'
+import type { Gong } from '../lib/chime'
 import { ROUTINES } from '../lib/wellness'
 import type { Routine } from '../lib/wellness'
 import { Sheet } from './Sheet'
@@ -36,12 +38,24 @@ function useElapsed(onEnd: (seconds: number) => void) {
   return secs
 }
 
+/** Rings the gong (if sound is on). Safe to call from effects. */
+function useGong() {
+  const { data } = useStore()
+  const on = data.settings.chime
+  return (kind: Gong) => {
+    if (on) gong(kind)
+  }
+}
+
 /** One slow minute: in for 4, out for 6, six times. A longer out-breath settles the body. */
 function Breathe({ rounds = 6, onDone, onClose }: { rounds?: number; onDone: (s: number) => void; onClose: () => void }) {
   const secs = useElapsed(onDone)
   const cycle = IN + OUT
   const round = Math.floor(secs / cycle)
   const finished = round >= rounds
+  const ring = useGong()
+  useEffect(() => ring('start'), []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (finished) ring('end') }, [finished]) // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <div className="breathe">
       <div className={`lung ${finished ? 'rest' : ''}`} style={{ ['--cycle' as string]: `${cycle}s`, ['--peak' as string]: `${(IN / cycle) * 100}%` }}>
@@ -59,6 +73,9 @@ function Timed({ minutes, lines, every, onDone, onClose }: { minutes: number; li
   const total = minutes * 60
   const left = Math.max(0, total - secs)
   const finished = left === 0
+  const ring = useGong()
+  useEffect(() => ring('start'), []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (finished) ring('end') }, [finished]) // eslint-disable-line react-hooks/exhaustive-deps
   const line = finished ? 'Take your time coming back. There is no rush.' : lines[Math.min(lines.length - 1, Math.floor(secs / every))]
   return (
     <div className="breathe sit">
@@ -75,6 +92,9 @@ function Box({ onDone, onClose }: { onDone: (s: number) => void; onClose: () => 
   const rounds = 4
   const total = rounds * 16
   const finished = secs >= total
+  const ring = useGong()
+  useEffect(() => ring('start'), []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (finished) ring('end') }, [finished]) // eslint-disable-line react-hooks/exhaustive-deps
   const phase = Math.floor((secs % 16) / 4)
   const label = finished ? 'Lovely.' : ['Breathe in', 'Hold', 'Breathe out', 'Hold'][phase]
   const big = !finished && (phase === 0 || phase === 1)
@@ -101,6 +121,13 @@ function Desk({ routine, onDone, onClose }: { routine: Routine; onDone: (s: numb
     at += routine.moves[i].seconds
   }
   const finished = i >= routine.moves.length
+  const ring = useGong()
+  const seen = useRef(-1)
+  useEffect(() => {
+    if (seen.current === i) return
+    ring(finished ? 'end' : seen.current === -1 ? 'start' : 'step')
+    seen.current = i
+  }, [i, finished]) // eslint-disable-line react-hooks/exhaustive-deps
   const move = routine.moves[Math.min(i, routine.moves.length - 1)]
   const left = finished ? 0 : at + move.seconds - t
   return (
@@ -198,7 +225,7 @@ export function Meditate({ start, onClose }: { start?: Session['id']; onClose: (
           <p className="soft" style={{ margin: 0 }}>Nothing to get right. Pick whatever fits the moment.</p>
           <div className="hairs">
             {SESSIONS.map((s) => (
-              <button key={s.id} className="item" style={{ width: '100%', textAlign: 'left' }} onClick={() => setMode(s.id)}>
+              <button key={s.id} className="item" style={{ width: '100%', textAlign: 'left' }} onClick={() => { prime(); setMode(s.id) }}>
                 <span className="grow">
                   <span className="title">{s.name}{s.id === pick && <span className="chip tiny">for now</span>}</span>
                   <span className="faint small" style={{ display: 'block' }}>{s.blurb}</span>
@@ -233,7 +260,10 @@ export function Meditate({ start, onClose }: { start?: Session['id']; onClose: (
 export function StillnessHost() {
   const [open, setOpen] = useState<{ id?: Session['id'] } | null>(null)
   useEffect(() => {
-    openIt = (id) => setOpen({ id })
+    openIt = (id) => {
+      prime()
+      setOpen({ id })
+    }
     return () => {
       openIt = () => {}
     }

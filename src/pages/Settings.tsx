@@ -164,6 +164,11 @@ export function Settings() {
             Your name
             <input className="field" value={s.name} maxLength={30} autoComplete="given-name" placeholder="What should I call you?" onChange={(e) => set({ name: e.target.value })} />
           </label>
+          <label className="lab" style={{ marginTop: 14 }}>
+            What is all of it for?
+            <input className="field" value={s.why} maxLength={90} placeholder="In your own words" onChange={(e) => set({ why: e.target.value })} />
+          </label>
+          <p className="faint small" style={{ marginBottom: 0 }}>It types itself out on the loading screen each time you open the app, so you start with it in mind. It isn’t shown on Today.</p>
         </section>
 
         <section className="card">

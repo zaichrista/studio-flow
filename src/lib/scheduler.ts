@@ -33,6 +33,7 @@ export const DEFAULT_SETTINGS: Settings = {
   progressMinutes: 15,
   shutdownNudge: true,
   breakNudges: true,
+  chime: true,
   moveEvery: 90,
   clearest: 'morning',
   splash: 'always',

@@ -90,6 +90,8 @@ export interface Settings {
   shutdownNudge: boolean
   /** A nudge when each break starts */
   breakNudges: boolean
+  /** A soft gong to mark each exercise in the wellness programs */
+  chime: boolean
   /** A stand-and-stretch nudge every this many minutes of work (0 = off) */
   moveEvery: number
   /** Play the opening animation on every launch, or only the first of the day */

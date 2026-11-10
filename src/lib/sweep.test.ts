@@ -128,3 +128,11 @@ describe('wellness', () => {
     expect(buildReminders(d, now).some((r) => r.tag === 'wellness')).toBe(false)
   })
 })
+
+import { gong, prime } from './chime'
+
+describe('the gong', () => {
+  it('stays quiet and safe where there is no audio', () => {
+    expect(() => { prime(); gong('start'); gong('end') }).not.toThrow()
+  })
+})
