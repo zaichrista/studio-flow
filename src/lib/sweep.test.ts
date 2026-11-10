@@ -136,3 +136,28 @@ describe('the gong', () => {
     expect(() => { prime(); gong('start'); gong('end') }).not.toThrow()
   })
 })
+
+import { makeArt, progressOf, settle } from './paint'
+
+describe('focus watercolour', () => {
+  it('makes the same picture for the same session and a different one for another', () => {
+    expect(makeArt(5)).toEqual(makeArt(5))
+    expect(makeArt(5)).not.toEqual(makeArt(6))
+  })
+
+  it('paints in order: washes, then blobs and strokes, then accents', () => {
+    const art = makeArt(9)
+    expect(art.length).toBeGreaterThan(40)
+    expect(art.map((m) => m.t)).toEqual([...art.map((m) => m.t)].sort((a, b) => a - b))
+    const first = art.filter((m) => m.t < 0.1)
+    expect(first.every((m) => m.kind === 'wash')).toBe(true)
+    expect(art.filter((m) => m.t > 0.97).every((m) => m.kind !== 'wash')).toBe(true)
+  })
+
+  it('starts blank and is complete at zero', () => {
+    const art = makeArt(3)
+    expect(art.every((m) => progressOf(m, 0) === 0 || m.t === 0)).toBe(true)
+    expect(art.every((m) => progressOf(m, 1) === 1)).toBe(true)
+    expect(settle(0.5004)).toBe(settle(0.5))
+  })
+})

@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { fmtClock, iso } from '../lib/dates'
 import { activeSeconds } from '../lib/stats'
 import { useNow, useStore } from '../lib/store'
+import { makeArt, progressOf, settle } from '../lib/paint'
 import { zenLine } from '../lib/wellbeing'
 import { useStopTimer } from './TimerDock'
 
@@ -72,6 +73,7 @@ export function FocusMode() {
   useWakeLock(open && !!data.active)
 
   const a = data.active
+  const art = useMemo(() => makeArt(a?.startedAt ?? 1), [a?.startedAt])
   if (!open || !a) return null
   const task = data.tasks.find((t) => t.id === a.taskId)
   const block = a.blockId ? data.blocks.find((b) => b.id === a.blockId) : undefined
@@ -86,6 +88,33 @@ export function FocusMode() {
 
   return (
     <div className="focus-mode" role="dialog" aria-modal="true" aria-label={`Focusing on ${task?.title ?? 'your work'}`}>
+      <div className="fm-paint" aria-hidden="true">
+        <svg viewBox="0 0 1000 1000" preserveAspectRatio="xMidYMid slice">
+          <defs>
+            {/* Wet edges: the colour bleeds unevenly, like pigment on damp paper. */}
+            <filter id="fm-wet" x="-25%" y="-25%" width="150%" height="150%">
+              <feTurbulence type="fractalNoise" baseFrequency="0.007 0.011" numOctaves="3" seed="11" result="n" />
+              <feDisplacementMap in="SourceGraphic" in2="n" scale="150" xChannelSelector="R" yChannelSelector="G" result="d" />
+              <feGaussianBlur in="d" stdDeviation="16" />
+            </filter>
+            <filter id="fm-grain" x="0" y="0" width="100%" height="100%">
+              <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="3" />
+              <feColorMatrix type="saturate" values="0" />
+            </filter>
+          </defs>
+          <g filter="url(#fm-wet)">
+            {art.map((m, i) => {
+              const q = progressOf(m, over ? 1 : settle(up))
+              if (q <= 0) return null
+              if (m.kind === 'stroke') {
+                return <path key={i} d={m.d} pathLength={1} fill="none" stroke={m.color} strokeWidth={m.w} strokeLinecap="round" strokeDasharray="1 1" strokeDashoffset={1 - q} opacity={m.opacity} />
+              }
+              return <ellipse key={i} cx={m.x} cy={m.y} rx={m.r * (0.4 + 0.6 * q)} ry={m.r * m.squash * (0.4 + 0.6 * q)} fill={m.color} opacity={m.opacity * q} />
+            })}
+          </g>
+          <rect width="1000" height="1000" filter="url(#fm-grain)" opacity="0.07" style={{ mixBlendMode: 'multiply' }} />
+        </svg>
+      </div>
       <button className="fm-leave" onClick={() => setOpen(false)}>Leave focus mode</button>
 
       <div className="fm-centre">

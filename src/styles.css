@@ -773,19 +773,26 @@ label.lab { display: grid; gap: 6px; font-size: 13px; color: var(--ink-soft); }
 .step-field.done { text-decoration: line-through; color: var(--ink-faint); }
 
 /* ---------- focus mode ---------- */
-/* Soft and plain on purpose: one calm colour, two thin rings, nothing moving but time. */
+/* Its own screen: solid paper, never see-through, with watercolour that fills in as the time runs down. */
 .focus-mode {
-  position: fixed; inset: 0; z-index: 50; display: grid; grid-template-rows: auto 1fr auto; justify-items: center;
+  --ink: #2a2430; --ink-soft: #5b5163; --ink-faint: #81778a; --hair: rgb(60 40 70 / .14);
+  --sage-deep: #2f6f6c; --sage: #2f6f6c; --clay: #d94f78; --raised: #fffaf5; --bg: #f7f2ec;
+  position: fixed; inset: 0; z-index: 200; display: grid; grid-template-rows: auto 1fr auto; justify-items: center;
   padding: calc(24px + var(--safe-t)) 24px calc(28px + var(--safe-b));
-  background: color-mix(in srgb, var(--sage-wash) 40%, var(--bg)); overflow: hidden;
+  background: #f7f2ec; color: var(--ink); overflow: hidden;
   animation: fade var(--t-slow) var(--ease);
 }
+.fm-paint { position: absolute; inset: 0; pointer-events: none; }
+.fm-paint svg { width: 100%; height: 100%; display: block; }
+/* A soft pool of paper light behind the clock, so it reads however bold the colour gets. */
+.fm-paint::after { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse 42% 52% at 50% 50%, rgb(255 250 245 / .78), rgb(255 250 245 / .35) 55%, transparent 100%); }
+.fm-leave, .fm-centre, .fm-zen { z-index: 1; }
 .fm-leave { position: relative; justify-self: end; font-size: 14px; color: var(--ink-faint); padding: 10px 16px; border-radius: 999px; }
 .fm-leave:hover { background: color-mix(in srgb, var(--raised) 60%, transparent); color: var(--ink-soft); }
 .fm-centre { position: relative; align-self: center; display: grid; justify-items: center; text-align: center; gap: 14px; max-width: 560px; }
 .fm-ring { position: relative; width: min(72vw, 380px); aspect-ratio: 1; margin: 6px 0 4px; }
 /* A soft disc that breathes very slowly behind the time. */
-.fm-ring::before { content: ''; position: absolute; inset: 20%; border-radius: 50%; background: color-mix(in srgb, var(--raised) 70%, transparent); animation: fm-breathe 10s var(--ease-soft) infinite; }
+.fm-ring::before { content: ''; position: absolute; inset: 20%; border-radius: 50%; background: rgb(255 250 245 / .55); animation: fm-breathe 10s var(--ease-soft) infinite; }
 @keyframes fm-breathe { 0%, 100% { transform: scale(.94); } 40% { transform: scale(1.03); } }
 .fm-ring svg { position: relative; width: 100%; height: 100%; }
 .fm-ring circle { fill: none; stroke-width: 9; }
